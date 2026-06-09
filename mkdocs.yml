@@ -1,0 +1,22 @@
+site_name: My Docs
+
+theme:
+    name: material
+
+plugins:
+  - search
+
+markdown_extensions:
+    - admonition
+    - pymdownx.superfences
+    - pymdownx.details
+    - tables
+    - toc
+
+nav:
+  - Home: index.md
+  - Azure:
+      - Sentinel: azure/sentinel.md
+  - ThreatHunting:
+      - Foundations: threathunting/foundation.md
+
