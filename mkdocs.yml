@@ -19,4 +19,5 @@ nav:
       - Sentinel: azure/sentinel.md
   - ThreatHunting:
       - Foundations: threathunting/foundation.md
+      - ThreatHunting Tools: threathunting/threat-hunting-tools.md
 
