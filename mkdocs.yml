@@ -20,4 +20,6 @@ nav:
   - ThreatHunting:
       - Foundations: threathunting/foundation.md
       - ThreatHunting Tools: threathunting/threat-hunting-tools.md
+  - UseCaseEngineering : 
+      - Foundations: UseCaseEngineering/foundations.md 
 
