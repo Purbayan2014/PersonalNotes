@@ -18,8 +18,8 @@ nav:
   - Azure:
       - Sentinel: azure/sentinel.md
   - ThreatHunting:
-      - Foundations: threathunting/foundation.md
-      - ThreatHunting Tools: threathunting/threat-hunting-tools.md
-  - UseCaseEngineering : 
+      - foundations: threathunting/foundation.md
+      - threat-Hunting-tools: threathunting/threat-hunting-tools.md
+  - UseCaseEngineering: 
       - Foundations: UseCaseEngineering/foundations.md 
 
