@@ -16,6 +16,33 @@
 12. Successful Legacy Authentication to Cloud Mailbox
 13. Login from Anonymous Proxy or TOR Exit Node
 14. Session Token Replay Across Unusual ASN or Device
+15. Risky Sign-in followed by Sensitive Application Access
+16. User added to domain admins or global admins
+17. Dcync or directory replication abuse indicator
+18. Kerboroasting-like service ticket request spike
+19. GPO modified in weaken security controls
+20. Remote Service creation on multiple hosts
+21. WMI Remote execution from unusal host
+22. PAM password checkout without approved ticket
+23. Breakglass account used
+24. Priviledged session recording disabled or missing 
+25. Vendor priviledged access outside approved window
+26. Phishing email delivered and user clicked link
+27. Suspicious zip attachment containing lnk or script
+28. Teams or sharepoint suspicious file shared internally 
+29. Mailbox forwarding rule to external domain
+30. Inbox rule created to hide security or finance mails
+31. Mass outbount email from user mailbox
+32. BEC payment instruction change request 
+33. Executive display name spoofing 
+34. QR Phishing email 
+35. Mailox delegation or fullaccess permission added
+36. Office application spawns powershell
+37. Encoded or obfuscated powershell command
+38. Powershell downloads remote content
+39. LNK File launches command interpreter
+40. Rundll32 execution from user-writable path
+
 
 ---
 
@@ -88,14 +115,14 @@ req log sources :
         - identify the source application
 
 
-## Building Blocks Design 
+Building Blocks Design 
 
 BB Known corp countries list to be mainted 
 BB Known priv users list to be mainted 
 BB Allowed VPN Ranges list to be mainted 
 BB Service Account exclusion list to be maintained
 
-## Rule logic
+Rule logic
 
 rule Password_Spray_Success_HighRisk
 {
@@ -129,7 +156,7 @@ rule Password_Spray_Success_HighRisk
     #risk >= 1
 }
 
-## Alert Design 
+Alert Design 
 
 ![alt text](../assets/alertdesign.png)
 

@@ -1,15 +1,15 @@
 site_name: My Docs
 
 theme:
-    name: material
+    name: mkdocs
 
 plugins:
   - search
 
 markdown_extensions:
     - admonition
-    - pymdownx.superfences
-    - pymdownx.details
+    # - pymdownx.superfences
+    # - pymdownx.details
     - tables
     - toc
 
