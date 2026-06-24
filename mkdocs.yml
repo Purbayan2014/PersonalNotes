@@ -14,9 +14,9 @@ markdown_extensions:
     - toc
 
 nav:
-  - Home: index.md
-  - Azure:
-      - Sentinel: azure/sentinel.md
+#   - Home: index.md
+#   - Azure:
+    #   - Sentinel: azure/sentinel.md
   - ThreatHunting:
       - foundations: threathunting/foundation.md
       - threat-Hunting-tools: threathunting/threat-hunting-tools.md
