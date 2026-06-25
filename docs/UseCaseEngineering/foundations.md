@@ -42,7 +42,16 @@
 38. Powershell downloads remote content
 39. LNK File launches command interpreter
 40. Rundll32 execution from user-writable path
-
+41. MShta Execution from email or Browser context 
+42. CertUtil or Bitsadmin used to download file
+43. Suspicious Scheduled Task Created
+44. Registry Run key persistence
+45. Suspicious lsass Access
+46. Security tool disabled or tampered
+47. Same Suspicious hash executed on multiple hosts
+48. Volume Shadow Copy Deletion 
+49. Backup Repository Deletion or Tampering 
+50. Mass File Rename or modification spike
 
 ---
 
@@ -4468,3 +4477,1144 @@ False Positive Possibilities
 • Business travel, remote work, vendor support activity or approved temporary access.
 • False reputation match, geolocation inaccuracy, NAT/proxy aggregation or log parsing issue.
 • Application behaviour change after release, patch, policy update or workflow redesign.
+
+# usecase 41 : mshta execution from email or browser context 
+
+category : endpoint, malware and living of the land
+mitre att&ck mapping : T1218.005 Mshta
+
+hypothesis : mshta.exe is launced froma an email or browser process and retrieves remote content
+
+Required log sources :
+    - edr
+    - sysmon
+    - email gateway
+    - browser telemetry
+    - timegenerated/eventtime
+    - user/account/service-principal
+    - host/device/asset
+    - sourceip/destip/geo/asn
+    - action/result/status
+    - application/resource/object
+
+Building Blocks Design 
+
+BB Mshta execution
+BB Suspicious Parent Process
+BB External URL Argument
+
+Rule Creation Logic 
+
+rule High_Fidelity_Mshta_Email_Or_Browser_Execution
+{
+  meta:
+    severity = "Critical"
+    attack_technique = "T1218.005"
+
+  events:
+
+    $proc.metadata.event_type =
+      "PROCESS_LAUNCH"
+
+    re.regex(
+      $proc.target.process.file.full_path,
+      `(?i).*\\mshta\.exe`
+    )
+
+    re.regex(
+      $proc.principal.process.file.full_path,
+      `(?i)(
+         outlook\.exe|
+         chrome\.exe|
+         msedge\.exe|
+         firefox\.exe
+      )`
+    )
+
+    re.regex(
+      $proc.target.process.command_line,
+      `(?i)(http://|https://)`
+    )
+
+  match:
+    $proc.principal.hostname over 60m
+
+  outcome:
+    $risk_score = 95
+
+  condition:
+
+    #proc > 0 and
+
+    not $proc.principal.user.userid in
+      %approved_legacy_hta_users
+}
+
+Alert Design 
+
+![alt text](../assets/alertdesign41.png)
+
+Grouping logic : 
+
+• Group by same user and source IP when identity or cloud activity is involved.
+• Group by same host, process, file hash or destination when endpoint activity is involved.
+• Group by same mailbox, site, file repository or external recipient when email or data activity is involved.
+• Group by same API token, endpoint, session or customer object when application/API activity is involved.
+• Escalate to a higher-level incident when two or more categories appear in the same timeline.
+
+Triage Questions : 
+
+• Is the user, host, application or service account expected to perform this activity?
+• Is there an approved change, service request, incident ticket or business justification?
+• Did the same entity trigger other related alerts before or after this event?
+• Is the source IP, country, ASN, device, user-agent or session new for this entity?
+• Is the affected asset, mailbox, data repository or application business-critical?
+• Was the activity allowed, blocked, partially completed or only attempted?
+• Is there evidence of data access, privilege change, control tampering, lateral movement or persistence?
+• Should this be escalated to L2/L3, Incident Response, IAM, endpoint, cloud, network, application or risk/compliance
+team?
+• What is the parent-child process chain and command-line context?
+• Should the endpoint or server be isolated immediately?
+
+Recommended Response Actions
+
+• Validate the alert against the simulated or real evidence timeline and preserve raw events.
+• Enrich the entities with user role, asset owner, department, asset criticality, privilege level and recent activity.
+• Check for matching activity across SIEM, EDR, identity, cloud, proxy, email, application and network telemetry.
+• Escalate according to the incident classification and business impact, not only the technical event type.
+• Document the final decision, containment actions, evidence and closure rationale in the case record.
+• Contain affected endpoint or server if execution, credential access, persistence, lateral movement or impact indicators
+are confirmed.
+• Collect process tree, file hash, command line, network destination and memory/EDR evidence where required.
+
+False Positive Possibilities
+
+• Approved maintenance, migration, testing, vulnerability assessment or administrative activity.
+• Known automation account, service integration, backup process, security tool, scanner or deployment platform.
+• Business travel, remote work, vendor support activity or approved temporary access.
+• False reputation match, geolocation inaccuracy, NAT/proxy aggregation or log parsing issue.
+• Application behaviour change after release, patch, policy update or workflow redesign.
+
+# usecase 42 : Certutil or bitsadmin used to download file
+
+category : Endpoint; malware and living of the land
+mitre att&ck mapping : T1105 Ingress Tool Transfer; T1218 System Binary Proxy Execution
+
+hypothesis : A native windows utility is used to to download a file on the internet 
+
+Required log sources : 
+    - edr
+    - sysmon
+      - 
+    - proxy logs
+      - shows outbount web access linked to certutil or bitsadmin used to download file , including url , domain, category, upload/download size, http method
+    - timegenerated/eventtime
+    - user/account/service-principal
+    - sourceip/destinationip/geo/asn
+    - action/result/status
+    - application/resource/object 
+
+Building Blocks Design 
+
+BB Lolbin download
+BB External Destination
+BB User workstattion
+
+Rule Creation logic
+
+rule High_Fidelity_LOLBin_Download
+{
+  meta:
+    severity = "Critical"
+    attack_technique = "T1105"
+
+  events:
+
+    $proc.metadata.event_type =
+      "PROCESS_LAUNCH"
+
+    re.regex(
+      $proc.target.process.file.full_path,
+      `(?i).*(certutil|bitsadmin)\.exe`
+    )
+
+    re.regex(
+      $proc.target.process.command_line,
+      `(?i)(
+         -urlcache|
+         /transfer|
+         http://|
+         https://|
+         ftp://
+      )`
+    )
+
+    $ti.security_result.summary =
+      "EXTERNAL_DESTINATION"
+
+  match:
+    $proc.principal.hostname over 60m
+
+  outcome:
+    $risk_score = 95
+
+  condition:
+
+    #proc > 0 and
+    #ti > 0 and
+
+    not $proc.principal.user.userid in
+      %approved_software_deployment_accounts
+}
+
+Alert Design 
+
+![alt text](../assets/alertdesign42.png)
+
+Grouping logic 
+
+• Group by same user and source IP when identity or cloud activity is involved.
+• Group by same host, process, file hash or destination when endpoint activity is involved.
+• Group by same mailbox, site, file repository or external recipient when email or data activity is involved.
+• Group by same API token, endpoint, session or customer object when application/API activity is involved.
+• Escalate to a higher-level incident when two or more categories appear in the same timeline.
+
+Triage Questions
+
+• Is the user, host, application or service account expected to perform this activity?
+• Is there an approved change, service request, incident ticket or business justification?
+• Did the same entity trigger other related alerts before or after this event?
+• Is the source IP, country, ASN, device, user-agent or session new for this entity?
+• Is the affected asset, mailbox, data repository or application business-critical?
+• Was the activity allowed, blocked, partially completed or only attempted?
+• Is there evidence of data access, privilege change, control tampering, lateral movement or persistence?
+• Should this be escalated to L2/L3, Incident Response, IAM, endpoint, cloud, network, application or risk/compliance
+team?
+• What is the parent-child process chain and command-line context?
+• Should the endpoint or server be isolated immediately?
+
+Recommended Response Actions
+
+• Validate the alert against the simulated or real evidence timeline and preserve raw events.
+• Enrich the entities with user role, asset owner, department, asset criticality, privilege level and recent activity.
+• Check for matching activity across SIEM, EDR, identity, cloud, proxy, email, application and network telemetry.
+• Escalate according to the incident classification and business impact, not only the technical event type.
+• Document the final decision, containment actions, evidence and closure rationale in the case record.
+• Contain affected endpoint or server if execution, credential access, persistence, lateral movement or impact indicators
+are confirmed.
+• Collect process tree, file hash, command line, network destination and memory/EDR evidence where required.
+
+False Positive Possibilities
+
+• Approved maintenance, migration, testing, vulnerability assessment or administrative activity.
+• Known automation account, service integration, backup process, security tool, scanner or deployment platform.
+• Business travel, remote work, vendor support activity or approved temporary access.
+• False reputation match, geolocation inaccuracy, NAT/proxy aggregation or log parsing issue.
+• Application behaviour change after release, patch, policy update or workflow redesign.
+
+# usecase 43 : Suspicious Scheduled Task Created 
+
+Category : Endpoint; malware and living of the land 
+mitre att&ck mapping : T1053 Scheduled Task/Job; T1053.005 Scheduled Task
+
+hypothesis : A scheduled task is created to run powershell or a script repeatedly from a user directory
+
+Required log sources :
+    - windows event logs
+      - provides evidence for suspicious scheduled task created 
+    - sysmon
+    - edr
+    - timegenerated/eventtime
+    - user/account/service-principal
+    - host/device/asset
+    - sourceip/geo/destip/asn
+    - action/result/status
+
+Building Blocks Design 
+
+BB Scheduled Task Creation
+BB Script Interpreter Action
+BB User-writable path
+
+Rule Creation logic 
+
+rule Scheduled_Task_Creates_Script_Interpreter
+{
+  meta:
+    severity = "High"
+
+  events:
+
+    $task.metadata.event_type = "PROCESS_LAUNCH"
+
+    re.regex(
+      $task.target.process.file.full_path,
+      `(?i).*schtasks\.exe`
+    )
+
+    re.regex(
+      $task.target.process.command_line,
+      `(?i)/create`
+    )
+
+    re.regex(
+      $task.target.process.command_line,
+      `(?i)(
+        powershell\.exe|
+        pwsh\.exe|
+        cmd\.exe|
+        wscript\.exe|
+        cscript\.exe|
+        mshta\.exe
+      )`
+    )
+
+  match:
+    $task.principal.hostname over 60m
+
+  outcome:
+    $risk_score = 85
+
+  condition:
+    #task > 0
+}
+
+Alert Design 
+
+![alt text](../assets/alertdesign43.png)
+
+Grouping logic
+
+• Group by same user and source IP when identity or cloud activity is involved.
+• Group by same host, process, file hash or destination when endpoint activity is involved.
+• Group by same mailbox, site, file repository or external recipient when email or data activity is involved.
+• Group by same API token, endpoint, session or customer object when application/API activity is involved.
+• Escalate to a higher-level incident when two or more categories appear in the same timeline.
+
+
+Triage Questions
+
+• Is the user, host, application or service account expected to perform this activity?
+• Is there an approved change, service request, incident ticket or business justification?
+• Did the same entity trigger other related alerts before or after this event?
+• Is the source IP, country, ASN, device, user-agent or session new for this entity?
+• Is the affected asset, mailbox, data repository or application business-critical?
+• Was the activity allowed, blocked, partially completed or only attempted?
+• Is there evidence of data access, privilege change, control tampering, lateral movement or persistence?
+• Should this be escalated to L2/L3, Incident Response, IAM, endpoint, cloud, network, application or risk/compliance
+team?
+• What is the parent-child process chain and command-line context?
+• Should the endpoint or server be isolated immediately?
+
+Recommended Response Actions
+
+• Validate the alert against the simulated or real evidence timeline and preserve raw events.
+• Enrich the entities with user role, asset owner, department, asset criticality, privilege level and recent activity.
+• Check for matching activity across SIEM, EDR, identity, cloud, proxy, email, application and network telemetry.
+• Escalate according to the incident classification and business impact, not only the technical event type.
+• Document the final decision, containment actions, evidence and closure rationale in the case record.
+• Contain affected endpoint or server if execution, credential access, persistence, lateral movement or impact indicators
+are confirmed.
+• Collect process tree, file hash, command line, network destination and memory/EDR evidence where required.
+
+False Positive Possibilities
+
+• Approved maintenance, migration, testing, vulnerability assessment or administrative activity.
+• Known automation account, service integration, backup process, security tool, scanner or deployment platform.
+• Business travel, remote work, vendor support activity or approved temporary access.
+• False reputation match, geolocation inaccuracy, NAT/proxy aggregation or log parsing issue.
+• Application behaviour change after release, patch, policy update or workflow redesign.
+
+# usecase 44 : Registry Run key persistence
+
+Category : endpoint, malware and living of the land
+mitre att&ck mapping : T1547.001 Registry Run Keys / Startup Folder
+
+hypothesis : A run key is created pointing to an executable under AppData or Temp
+
+Required log sources :
+    - sysmon registry events
+      - provides endpoint execution and host level evidence for registry run key persistence
+    - edr
+    - timegenerated/eventtime
+    - user / account / service-principal
+    - host/device/asset
+    - sourceip/geo/asn/destip
+    - action/result/status
+    - application/resource/object
+
+Rule Creation Logic 
+
+rule Scheduled_Task_Creates_Script_Interpreter
+{
+  meta:
+    severity = "High"
+
+  events:
+
+    $task.metadata.event_type = "PROCESS_LAUNCH"
+
+    re.regex(
+      $task.target.process.file.full_path,
+      `(?i).*schtasks\.exe`
+    )
+
+    re.regex(
+      $task.target.process.command_line,
+      `(?i)/create`
+    )
+
+    re.regex(
+      $task.target.process.command_line,
+      `(?i)(
+        powershell\.exe|
+        pwsh\.exe|
+        cmd\.exe|
+        wscript\.exe|
+        cscript\.exe|
+        mshta\.exe
+      )`
+    )
+
+  match:
+    $task.principal.hostname over 60m
+
+  outcome:
+    $risk_score = 85
+
+  condition:
+    #task > 0
+}
+
+
+Alert Design 
+
+![alt text](../assets/alertdesign44.png)
+
+
+Groupin logic 
+
+• Group by same user and source IP when identity or cloud activity is involved.
+• Group by same host, process, file hash or destination when endpoint activity is involved.
+• Group by same mailbox, site, file repository or external recipient when email or data activity is involved.
+• Group by same API token, endpoint, session or customer object when application/API activity is involved.
+• Escalate to a higher-level incident when two or more categories appear in the same timeline.
+
+
+Triage Questions
+
+• Is the user, host, application or service account expected to perform this activity?
+• Is there an approved change, service request, incident ticket or business justification?
+• Did the same entity trigger other related alerts before or after this event?
+• Is the source IP, country, ASN, device, user-agent or session new for this entity?
+• Is the affected asset, mailbox, data repository or application business-critical?
+• Was the activity allowed, blocked, partially completed or only attempted?
+• Is there evidence of data access, privilege change, control tampering, lateral movement or persistence?
+• Should this be escalated to L2/L3, Incident Response, IAM, endpoint, cloud, network, application or risk/compliance
+team?
+• What is the parent-child process chain and command-line context?
+• Should the endpoint or server be isolated immediately?
+
+Recommended Response Actions
+
+• Validate the alert against the simulated or real evidence timeline and preserve raw events.
+• Enrich the entities with user role, asset owner, department, asset criticality, privilege level and recent activity.
+• Check for matching activity across SIEM, EDR, identity, cloud, proxy, email, application and network telemetry.
+• Escalate according to the incident classification and business impact, not only the technical event type.
+• Document the final decision, containment actions, evidence and closure rationale in the case record.
+• Contain affected endpoint or server if execution, credential access, persistence, lateral movement or impact indicators
+are confirmed.
+• Collect process tree, file hash, command line, network destination and memory/EDR evidence where required.
+
+False Positive Possibilities
+
+• Approved maintenance, migration, testing, vulnerability assessment or administrative activity.
+• Known automation account, service integration, backup process, security tool, scanner or deployment platform.
+• Business travel, remote work, vendor support activity or approved temporary access.
+• False reputation match, geolocation inaccuracy, NAT/proxy aggregation or log parsing issue.
+• Application behaviour change after release, patch, policy update or workflow redesign.
+
+# usecase 45 : Suspicious lsass Access
+
+category : endpoint, malware and living of the land
+mitre att&ck mapping : T1003.001 LSASS Memory
+
+hypothesis : An unsigned or abnormal process opens lsass memory with high access rights
+
+Required log sources :
+    - edr
+    - sysmon event 10
+    - windows security logs
+    - timegenerated/event-time
+    - user/account/service-prinicpal
+    - host/device/asset
+    - sourceip/geo/destip/asn
+    - action/result/status
+    - application/resource/object
+
+Building Blocks Design 
+
+BB Lsass Access
+BB Non-standad Process
+BB Credential Theft Tools Exclusion
+
+Rule Creation logic
+
+rule High_Fidelity_Suspicious_LSASS_Access
+{
+  meta:
+    severity = "Critical"
+    attack_technique = "T1003.001"
+
+  events:
+
+    $access.metadata.event_type =
+      "PROCESS_ACCESS"
+
+    re.regex(
+      $access.target.process.file.full_path,
+      `(?i).*\\lsass\.exe`
+    )
+
+    re.regex(
+      $access.principal.process.file.full_path,
+      `(?i)(
+        mimikatz|
+        procdump|
+        dumpert|
+        nanodump|
+        rundll32
+      )`
+    )
+
+  match:
+    $access.principal.hostname over 60m
+
+  outcome:
+    $risk_score = 95
+
+  condition:
+
+    #access > 0 and
+
+    not $access.principal.process.file.full_path in
+      %approved_lsass_access_tools
+}
+
+Alert Design 
+
+![alt text](../assets/alertdesign45.png)
+
+Grouping logic 
+
+• Group by same user and source IP when identity or cloud activity is involved.
+• Group by same host, process, file hash or destination when endpoint activity is involved.
+• Group by same mailbox, site, file repository or external recipient when email or data activity is involved.
+• Group by same API token, endpoint, session or customer object when application/API activity is involved.
+• Escalate to a higher-level incident when two or more categories appear in the same timeline.
+
+Triage Questions
+
+• Is the user, host, application or service account expected to perform this activity?
+• Is there an approved change, service request, incident ticket or business justification?
+• Did the same entity trigger other related alerts before or after this event?
+• Is the source IP, country, ASN, device, user-agent or session new for this entity?
+• Is the affected asset, mailbox, data repository or application business-critical?
+• Was the activity allowed, blocked, partially completed or only attempted?
+• Is there evidence of data access, privilege change, control tampering, lateral movement or persistence?
+• Should this be escalated to L2/L3, Incident Response, IAM, endpoint, cloud, network, application or risk/compliance
+team?
+• What is the parent-child process chain and command-line context?
+• Should the endpoint or server be isolated immediately?
+
+Recommended Response Actions
+
+• Validate the alert against the simulated or real evidence timeline and preserve raw events.
+• Enrich the entities with user role, asset owner, department, asset criticality, privilege level and recent activity.
+• Check for matching activity across SIEM, EDR, identity, cloud, proxy, email, application and network telemetry.
+• Escalate according to the incident classification and business impact, not only the technical event type.
+• Document the final decision, containment actions, evidence and closure rationale in the case record.
+• Contain affected endpoint or server if execution, credential access, persistence, lateral movement or impact indicators
+are confirmed.
+• Collect process tree, file hash, command line, network destination and memory/EDR evidence where required.
+
+False Positive Possibilities
+
+• Approved maintenance, migration, testing, vulnerability assessment or administrative activity.
+• Known automation account, service integration, backup process, security tool, scanner or deployment platform.
+• Business travel, remote work, vendor support activity or approved temporary access.
+• False reputation match, geolocation inaccuracy, NAT/proxy aggregation or log parsing issue.
+• Application behaviour change after release, patch, policy update or workflow redesign.
+
+Tuning Notes
+
+• Create and maintain the building blocks used by this rule: BB: LSASS Access, BB: Non-Standard Process, BB:
+Credential Theft Tools Exclusion.
+• Do not tune by broad user or IP exclusion alone. Prefer conditional exclusions using asset, application, time window,
+change ticket and expected source.
+• Use dynamic baselines per user, host, application or service account where possible. A single global threshold will
+create noise or miss high-risk low-volume activity.
+• Review the rule after every confirmed true positive, false positive spike, application migration, logging schema change
+or major incident.
+• Record tuning decisions in the use case register so future analysts understand why thresholds, exceptions and
+suppression rules exist.
+
+# usecase 46 : Security tool disabled or tampered
+
+Category : endpoint, malware and living of the land
+Mitre att&ck mapping : T1562 Impair Defenses
+
+Hypothesis : Endpoint service is stopped or policy is weakened before suspicious activity continues
+
+Required log sources : 
+    - edr health logs
+    - windows services
+    - av logs
+      - provides supporting evidence for security tool disabled or tampered
+    - sysmon
+    - timegenerated/eventtime
+    - user/account/service-prinicpal
+    - host/device/asset
+    - sourceip/geo/asn/destip
+    - action/result/status
+    - application/resource/object
+
+Building Block Design 
+
+BB EDR Service Stop
+BB AV Policy Change
+BB Critical Servers
+
+Rule Creation logic
+
+rule EDR_Service_Stop_With_AV_Policy_Change
+{
+  meta:
+    severity = "Critical"
+
+  events:
+
+    $service.metadata.event_type = "SERVICE_STATE_CHANGE"
+
+    re.regex(
+      $service.target.service.name,
+      `(?i)(
+         windefend|
+         sense|
+         csagent|
+         sentinelone
+      )`
+    )
+
+    $service.security_result.action = "STOP"
+
+    $policy.metadata.event_type = "SECURITY_POLICY_MODIFICATION"
+
+    $policy.security_result.action = "MODIFY"
+
+  match:
+    $service.principal.hostname over 60m
+
+  outcome:
+    $risk_score = 90
+
+  condition:
+
+    #service > 0 and
+    #policy > 0
+}
+
+![alt text](../assets/alertdesign46.png)
+
+Grouping logic
+
+• Group by same user and source IP when identity or cloud activity is involved.
+• Group by same host, process, file hash or destination when endpoint activity is involved.
+• Group by same mailbox, site, file repository or external recipient when email or data activity is involved.
+• Group by same API token, endpoint, session or customer object when application/API activity is involved.
+• Escalate to a higher-level incident when two or more categories appear in the same timeline.
+
+Triage Questions
+
+• Is the user, host, application or service account expected to perform this activity?
+• Is there an approved change, service request, incident ticket or business justification?
+• Did the same entity trigger other related alerts before or after this event?
+• Is the source IP, country, ASN, device, user-agent or session new for this entity?
+• Is the affected asset, mailbox, data repository or application business-critical?
+• Was the activity allowed, blocked, partially completed or only attempted?
+• Is there evidence of data access, privilege change, control tampering, lateral movement or persistence?
+• Should this be escalated to L2/L3, Incident Response, IAM, endpoint, cloud, network, application or risk/compliance
+team?
+• What is the parent-child process chain and command-line context?
+• Should the endpoint or server be isolated immediately?
+
+Recommended Response Actions
+
+• Validate the alert against the simulated or real evidence timeline and preserve raw events.
+• Enrich the entities with user role, asset owner, department, asset criticality, privilege level and recent activity.
+• Check for matching activity across SIEM, EDR, identity, cloud, proxy, email, application and network telemetry.
+• Escalate according to the incident classification and business impact, not only the technical event type.
+• Document the final decision, containment actions, evidence and closure rationale in the case record.
+• Contain affected endpoint or server if execution, credential access, persistence, lateral movement or impact indicators
+are confirmed.
+• Collect process tree, file hash, command line, network destination and memory/EDR evidence where required.
+
+False Positive Possibilities
+
+• Approved maintenance, migration, testing, vulnerability assessment or administrative activity.
+• Known automation account, service integration, backup process, security tool, scanner or deployment platform.
+• Business travel, remote work, vendor support activity or approved temporary access.
+• False reputation match, geolocation inaccuracy, NAT/proxy aggregation or log parsing issue.
+• Application behaviour change after release, patch, policy update or workflow redesign.
+
+# usecase 47 : same suspicious hash executed on multiple hosts
+
+category : endpoint; malware and living of the land
+mitre att&ck mapping : T1105 Ingress Tool Transfer; T1204 User Execution
+
+hypothesis : The same unknown executable appears and runs on multiple workstations within a short period
+
+Required log sources :
+    - edr file events
+    - edr process events
+    - threat intel
+    - timegenerated/eventtime
+    - user/account/service-principal
+    - host/device/asset
+    - sourceip/destip/geo/asn
+    - action/result/status
+    - application/object/resource
+
+Building Blocks Design 
+
+BB Unkown File hash
+BB Multi-Host Execution
+BB Malware Reputation
+
+Rule Creation logic
+
+rule High_Fidelity_Suspicious_Hash_Outbreak
+{
+  meta:
+    severity = "Critical"
+    attack_technique = "T1204"
+
+  events:
+
+    $proc.metadata.event_type =
+        "PROCESS_LAUNCH"
+
+    $hash =
+        $proc.target.process.file.sha256
+
+    $ti.security_result.summary =
+        "MALWARE_REPUTATION"
+
+  match:
+
+    $hash over 60m
+
+  outcome:
+
+    $host_count =
+        count_distinct($proc.principal.hostname)
+
+    $risk_score = 95
+
+  condition:
+
+    #proc >= 3 and
+
+    $host_count >= 3 and
+
+    #ti > 0 and
+
+    not $hash in %approved_enterprise_hashes
+}
+
+Alert Design 
+
+![alt text](../assets/alertdesign47.png)
+
+Grouping logic
+
+• Group by same user and source IP when identity or cloud activity is involved.
+• Group by same host, process, file hash or destination when endpoint activity is involved.
+• Group by same mailbox, site, file repository or external recipient when email or data activity is involved.
+• Group by same API token, endpoint, session or customer object when application/API activity is involved.
+• Escalate to a higher-level incident when two or more categories appear in the same timeline.
+
+Triage Questions
+
+• Is the user, host, application or service account expected to perform this activity?
+• Is there an approved change, service request, incident ticket or business justification?
+• Did the same entity trigger other related alerts before or after this event?
+• Is the source IP, country, ASN, device, user-agent or session new for this entity?
+• Is the affected asset, mailbox, data repository or application business-critical?
+• Was the activity allowed, blocked, partially completed or only attempted?
+• Is there evidence of data access, privilege change, control tampering, lateral movement or persistence?
+• Should this be escalated to L2/L3, Incident Response, IAM, endpoint, cloud, network, application or risk/compliance
+team?
+• What is the parent-child process chain and command-line context?
+• Should the endpoint or server be isolated immediately?
+
+Recommended Response Actions
+
+• Validate the alert against the simulated or real evidence timeline and preserve raw events.
+• Enrich the entities with user role, asset owner, department, asset criticality, privilege level and recent activity.
+• Check for matching activity across SIEM, EDR, identity, cloud, proxy, email, application and network telemetry.
+• Escalate according to the incident classification and business impact, not only the technical event type.
+• Document the final decision, containment actions, evidence and closure rationale in the case record.
+• Contain affected endpoint or server if execution, credential access, persistence, lateral movement or impact indicators
+are confirmed.
+• Collect process tree, file hash, command line, network destination and memory/EDR evidence where required.
+
+False Positive Possibilities
+
+• Approved maintenance, migration, testing, vulnerability assessment or administrative activity.
+• Known automation account, service integration, backup process, security tool, scanner or deployment platform.
+• Business travel, remote work, vendor support activity or approved temporary access.
+• False reputation match, geolocation inaccuracy, NAT/proxy aggregation or log parsing issue.
+• Application behaviour change after release, patch, policy update or workflow redesign.
+
+# usecase 48 : Volume Shadow Copy Deletion
+
+Category : Ransomware and Destructive Activity 
+mitre att&ck mapping : T1490 Inhibit System Recovery
+
+hypothesis : A host runs commands that delete local recovery snapshots, often seen before encryption activity
+
+Required log sources :
+    - edr process events
+    - windows logs
+    - powershell logs
+    - timegenerated/eventtime
+    - user/account/service-principal
+    - host/device/asset
+    - source-ip/destip/geo/asn
+    - action/result/status
+    - application/resource/object
+
+Building Blocks Design 
+
+BB Process Recovery 
+BB Server Criticality
+BB Admin Account
+
+Rule Creation logic
+
+rule High_Fidelity_Volume_Shadow_Copy_Deletion
+{
+  meta:
+    severity = "Critical"
+    attack_technique = "T1490"
+
+  events:
+
+    $proc.metadata.event_type = "PROCESS_LAUNCH"
+
+    re.regex(
+      $proc.target.process.command_line,
+      `(?i)(
+         vssadmin.*delete.*shadow|
+         wmic.*shadowcopy.*delete|
+         wbadmin.*delete.*catalog|
+         bcdedit.*recoveryenabled.*no|
+         bcdedit.*bootstatuspolicy.*ignoreallfailures
+      )`
+    )
+
+    $asset.security_result.summary = "CRITICAL_SERVER"
+
+  match:
+
+    $proc.principal.hostname over 60m
+
+  outcome:
+
+    $risk_score = 95
+
+  condition:
+
+    #proc > 0 and
+
+    not $proc.principal.user.userid in
+      %approved_backup_accounts
+}
+
+Alert Design
+
+![alt text](../assets/alertdesign48.png)
+
+Grouping logic
+
+• Group by same user and source IP when identity or cloud activity is involved.
+• Group by same host, process, file hash or destination when endpoint activity is involved.
+• Group by same mailbox, site, file repository or external recipient when email or data activity is involved.
+• Group by same API token, endpoint, session or customer object when application/API activity is involved.
+• Escalate to a higher-level incident when two or more categories appear in the same timeline.
+
+
+Triage Questions
+
+• Is the user, host, application or service account expected to perform this activity?
+• Is there an approved change, service request, incident ticket or business justification?
+• Did the same entity trigger other related alerts before or after this event?
+• Is the source IP, country, ASN, device, user-agent or session new for this entity?
+• Is the affected asset, mailbox, data repository or application business-critical?
+• Was the activity allowed, blocked, partially completed or only attempted?
+• Is there evidence of data access, privilege change, control tampering, lateral movement or persistence?
+• Should this be escalated to L2/L3, Incident Response, IAM, endpoint, cloud, network, application or risk/compliance
+team?
+• What is the parent-child process chain and command-line context?
+• Should the endpoint or server be isolated immediately?
+
+Recommended Response Actions
+
+• Validate the alert against the simulated or real evidence timeline and preserve raw events.
+• Enrich the entities with user role, asset owner, department, asset criticality, privilege level and recent activity.
+• Check for matching activity across SIEM, EDR, identity, cloud, proxy, email, application and network telemetry.
+• Escalate according to the incident classification and business impact, not only the technical event type.
+• Document the final decision, containment actions, evidence and closure rationale in the case record.
+• Contain affected endpoint or server if execution, credential access, persistence, lateral movement or impact indicators
+are confirmed.
+• Collect process tree, file hash, command line, network destination and memory/EDR evidence where required.
+
+False Positive Possibilities
+
+• Approved maintenance, migration, testing, vulnerability assessment or administrative activity.
+• Known automation account, service integration, backup process, security tool, scanner or deployment platform.
+• Business travel, remote work, vendor support activity or approved temporary access.
+• False reputation match, geolocation inaccuracy, NAT/proxy aggregation or log parsing issue.
+• Application behaviour change after release, patch, policy update or workflow redesign.
+
+# usecase 49 : Backup Repository Deletion or Tampering 
+
+Category : Ransomware and Destructive Activity 
+Mitre att&ck mapping : T1490 Inhibit System Recovery
+
+hypothesis : A backup admin account deletes restore points or modifies retention unexpectedly
+
+Required log sources :
+    - backup platform logs
+    - pam logs
+    - windows logs
+    - timegenerated/eventtime
+    - user/account/service-principal
+    - host/device/asset
+    - sourceip/destip/geo/asn
+    - action/result/status
+    - application/resource/object
+
+
+Building Blocks Design 
+
+BB Backup Admin Accounts
+BB Critical Backup Repository 
+BB Approved Backup
+
+Rule Creation logic 
+
+rule Backup_Repository_Tampering_On_Critical_System
+{
+  meta:
+    severity = "Critical"
+    mitre_tactic = "Impact"
+
+  events:
+
+    $backup.metadata.event_type = "RESOURCE_DELETION"
+
+    re.regex(
+      $backup.target.resource.name,
+      `(?i)(
+         backup|
+         repository|
+         immutable|
+         vault
+      )`
+    )
+
+    $pam.security_result.summary = "BACKUP_ADMIN_ACCOUNT"
+
+    $asset.security_result.summary = "CRITICAL_BACKUP_REPOSITORY"
+
+  match:
+
+    $backup.principal.hostname over 60m
+
+  outcome:
+
+    $risk_score =
+        50 +
+        if(#pam > 0,20,0) +
+        if(#asset > 0,25,0)
+
+  condition:
+
+    #backup > 0 and
+
+    (
+      #pam > 0 or
+      #asset > 0
+    ) and
+
+    $risk_score >= 80
+}
+
+Alert Design 
+
+![alt text](../assets/alertdesign49.png)
+
+Grouping logic 
+
+• Group by same user and source IP when identity or cloud activity is involved.
+• Group by same host, process, file hash or destination when endpoint activity is involved.
+• Group by same mailbox, site, file repository or external recipient when email or data activity is involved.
+• Group by same API token, endpoint, session or customer object when application/API activity is involved.
+• Escalate to a higher-level incident when two or more categories appear in the same timeline.
+
+Triage Questions
+
+• Is the user, host, application or service account expected to perform this activity?
+• Is there an approved change, service request, incident ticket or business justification?
+• Did the same entity trigger other related alerts before or after this event?
+• Is the source IP, country, ASN, device, user-agent or session new for this entity?
+• Is the affected asset, mailbox, data repository or application business-critical?
+• Was the activity allowed, blocked, partially completed or only attempted?
+• Is there evidence of data access, privilege change, control tampering, lateral movement or persistence?
+• Should this be escalated to L2/L3, Incident Response, IAM, endpoint, cloud, network, application or risk/compliance
+team?
+• What is the parent-child process chain and command-line context?
+• Should the endpoint or server be isolated immediately?
+
+Recommended Response Actions
+
+• Validate the alert against the simulated or real evidence timeline and preserve raw events.
+• Enrich the entities with user role, asset owner, department, asset criticality, privilege level and recent activity.
+• Check for matching activity across SIEM, EDR, identity, cloud, proxy, email, application and network telemetry.
+• Escalate according to the incident classification and business impact, not only the technical event type.
+• Document the final decision, containment actions, evidence and closure rationale in the case record.
+• Contain affected endpoint or server if execution, credential access, persistence, lateral movement or impact indicators
+are confirmed.
+• Collect process tree, file hash, command line, network destination and memory/EDR evidence where required.
+
+False Positive Possibilities
+
+• Approved maintenance, migration, testing, vulnerability assessment or administrative activity.
+• Known automation account, service integration, backup process, security tool, scanner or deployment platform.
+• Business travel, remote work, vendor support activity or approved temporary access.
+• False reputation match, geolocation inaccuracy, NAT/proxy aggregation or log parsing issue.
+• Application behaviour change after release, patch, policy update or workflow redesign.
+
+# usecase 50 : Mass File Rename or Modification Spike 
+
+Category : Ransomwae and Destructive Activity 
+Mitre att&ck mapping : T1486 Data Encrypted for Impact
+
+Hypothesis : One endpoint modifies thounsands of fikes across a share in minutes
+
+Required log sources :
+    - file server audit
+      - provides supporting evidence for mass file rename or modification spike
+    - edr file events
+    - windows logs
+    - timegenrated/eventtime
+    - user/account/service-principal
+    - host/device/asset
+    - sourceip/geo/asn/destip
+    - action/result/status
+    - application/resource/object
+
+Building Block Design 
+
+BB File Rename Share
+BB Sensitive Shares
+BB Known Backup Processes
+
+Rule Creation Logic
+
+rule Mass_File_Modification_On_Sensitive_Shares
+{
+  meta:
+    severity = "Critical"
+    mitre_tactic = "Impact"
+
+  events:
+
+    $file.metadata.event_type = "FILE_MODIFICATION"
+
+    $host = $file.principal.hostname
+
+    $share.security_result.summary = "SENSITIVE_SHARE"
+
+    $proc.security_result.summary = "KNOWN_BACKUP_PROCESS"
+
+  match:
+
+    $host over 10m
+
+  outcome:
+
+    $modified =
+        count($file)
+
+    $risk_score =
+        if($modified >= 1000,70,40) +
+        if(#share > 0,20,0)
+
+  condition:
+
+    $modified >= 500 and
+
+    #proc = 0 and
+
+    $risk_score >= 80
+}
+
+Alert Design 
+
+![alt text](../assets/alertdesign50.png)
+
+Grouping logic 
+
+• Group by same user and source IP when identity or cloud activity is involved.
+• Group by same host, process, file hash or destination when endpoint activity is involved.
+• Group by same mailbox, site, file repository or external recipient when email or data activity is involved.
+• Group by same API token, endpoint, session or customer object when application/API activity is involved.
+• Escalate to a higher-level incident when two or more categories appear in the same timeline.
+
+
+Triage Questions
+
+• Is the user, host, application or service account expected to perform this activity?
+• Is there an approved change, service request, incident ticket or business justification?
+• Did the same entity trigger other related alerts before or after this event?
+• Is the source IP, country, ASN, device, user-agent or session new for this entity?
+• Is the affected asset, mailbox, data repository or application business-critical?
+• Was the activity allowed, blocked, partially completed or only attempted?
+• Is there evidence of data access, privilege change, control tampering, lateral movement or persistence?
+• Should this be escalated to L2/L3, Incident Response, IAM, endpoint, cloud, network, application or risk/compliance
+team?
+• What is the parent-child process chain and command-line context?
+• Should the endpoint or server be isolated immediately?
+
+Recommended Response Actions
+
+• Validate the alert against the simulated or real evidence timeline and preserve raw events.
+• Enrich the entities with user role, asset owner, department, asset criticality, privilege level and recent activity.
+• Check for matching activity across SIEM, EDR, identity, cloud, proxy, email, application and network telemetry.
+• Escalate according to the incident classification and business impact, not only the technical event type.
+• Document the final decision, containment actions, evidence and closure rationale in the case record.
+• Contain affected endpoint or server if execution, credential access, persistence, lateral movement or impact indicators
+are confirmed.
+• Collect process tree, file hash, command line, network destination and memory/EDR evidence where required.
+
+False Positive Possibilities
+
+• Approved maintenance, migration, testing, vulnerability assessment or administrative activity.
+• Known automation account, service integration, backup process, security tool, scanner or deployment platform.
+• Business travel, remote work, vendor support activity or approved temporary access.
+• False reputation match, geolocation inaccuracy, NAT/proxy aggregation or log parsing issue.
+• Application behaviour change after release, patch, policy update or workflow redesign.
+
