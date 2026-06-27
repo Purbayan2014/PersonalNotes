@@ -72,6 +72,16 @@
 68. DLP or Sensitive label policy modified
 69. Excessive API Calls to sensitive endpoint
 70. API token used from new source ip 
+71. API Activity without matching interactive login 
+72. Sequential Object ID Access Pattern 
+73. Broken Function level authorisation indicator
+74. WAF Exploit Attempt
+75. Web Exploit followed by server process creation 
+76. Suspiciosu File to upload web applications
+77. Admin Portal Brute Force
+78. Business Logic Abuse in Transaction Flow
+79. Internal Host communicates with known malicious IP
+80. Malicious Domain Resolution 
 ---
 
 ## Common Investigation Framework
@@ -8172,6 +8182,1317 @@ Recommended Response Actions
 
 False Positive Possibilities
 
+• Approved maintenance, migration, testing, vulnerability assessment or administrative activity.
+• Known automation account, service integration, backup process, security tool, scanner or deployment platform.
+• Business travel, remote work, vendor support activity or approved temporary access.
+• False reputation match, geolocation inaccuracy, NAT/proxy aggregation or log parsing issue.
+• Application behaviour change after release, patch, policy update or workflow redesign.
+
+# uscase 71 : API activity  without matching interactive login
+
+Category : API, Application and Web Security
+Mitre att&ck mapping : T1550 Use Alternate Authentication Material
+
+Hypothesis : A user token performs api actions even though no matching login session creation is observed
+
+Required log sources :
+    - api gateway logs
+    - identity logs
+    - application session logs
+      - identifies the application , mailbox, sharpoint site, api endpoint, database, cloud object, file path or business resource touched with api actitivity without matching interactive login
+    - timegenerated/eventtime
+    - user/account/service-principal
+    - host/device/asset
+    - sourceip/geo/asn/destip
+    - application/resource/object
+
+Building Blocks Design 
+
+BB API Activity 
+BB Login Session correlation 
+BB Service Token Exclusion 
+
+Rule Creation Logic
+
+rule High_Fidelity_API_Activity_Without_Interactive_Login
+{
+  meta:
+    author = "SOC Team"
+    description = "Detect API activity without a correlated interactive login session"
+    severity = "Critical"
+    mitre_tactic = "Credential Access"
+    mitre_technique = "T1078.004"
+
+  events:
+
+    // Primary Event
+    $api.metadata.event_type = "NETWORK_HTTP"
+
+    re.regex(
+        $api.metadata.product_event_type,
+        `(?i)(
+            API Request|
+            Graph API Request|
+            REST API Call
+        )`
+    )
+
+    // Interactive Login
+    $login.metadata.event_type = "USER_LOGIN"
+
+    $login.security_result.action = "ALLOW"
+
+    // Building Blocks
+    $activity.security_result.summary = "API_ACTIVITY"
+
+    $session.security_result.summary = "LOGIN_SESSION_CORRELATION"
+
+    $service.security_result.summary = "SERVICE_TOKEN_EXCLUSION"
+
+    $user = $api.principal.user.userid
+
+    $login.principal.user.userid = $user
+
+  match:
+
+    $user over 60m
+
+  outcome:
+
+    $api_calls = count($api)
+
+    $risk_score =
+        40 +
+        if(#activity > 0,15,0) +
+        if(#login == 0,25,0) -
+        if(#service > 0,30,0)
+
+  condition:
+
+      #api > 0
+
+      and
+
+      #activity > 0
+
+      and
+
+      #login == 0
+
+      and
+
+      #service == 0
+
+      and
+
+      $risk_score >= 80
+}
+
+Alert Design 
+
+![alt text](../assets/alertdesign71..png)
+
+Grouping logic 
+
+• Group by same user and source IP when identity or cloud activity is involved.
+• Group by same host, process, file hash or destination when endpoint activity is involved.
+• Group by same mailbox, site, file repository or external recipient when email or data activity is involved.
+• Group by same API token, endpoint, session or customer object when application/API activity is involved.
+• Escalate to a higher-level incident when two or more categories appear in the same timeline.
+
+Triage Questions
+
+• Is the user, host, application or service account expected to perform this activity?
+• Is there an approved change, service request, incident ticket or business justification?
+• Did the same entity trigger other related alerts before or after this event?
+• Is the source IP, country, ASN, device, user-agent or session new for this entity?
+• Is the affected asset, mailbox, data repository or application business-critical?
+• Was the activity allowed, blocked, partially completed or only attempted?
+• Is there evidence of data access, privilege change, control tampering, lateral movement or persistence?
+• Should this be escalated to L2/L3, Incident Response, IAM, endpoint, cloud, network, application or risk/compliance
+team?
+• What data was accessed, exported, downloaded or uploaded?
+• Is customer, confidential, regulated or long-lived sensitive data involved?
+
+Recommended Response Actions
+
+• Validate the alert against the simulated or real evidence timeline and preserve raw events.
+• Enrich the entities with user role, asset owner, department, asset criticality, privilege level and recent activity.
+• Check for matching activity across SIEM, EDR, identity, cloud, proxy, email, application and network telemetry.
+• Escalate according to the incident classification and business impact, not only the technical event type.
+• Document the final decision, containment actions, evidence and closure rationale in the case record.
+• Block or rate-limit malicious source where justified, rotate exposed tokens and validate application-side impact.
+• Coordinate with application, network and infrastructure teams for evidence and containment.
+
+False Positive Possibilities
+
+• Approved maintenance, migration, testing, vulnerability assessment or administrative activity.
+• Known automation account, service integration, backup process, security tool, scanner or deployment platform.
+• Business travel, remote work, vendor support activity or approved temporary access.
+• False reputation match, geolocation inaccuracy, NAT/proxy aggregation or log parsing issue.
+• Application behaviour change after release, patch, policy update or workflow redesign.
+
+# usecase 72 : Sequential Object ID Acess Pattern 
+
+Category : API, Application and Web Security
+Mitre att&ck mapping : T1087 Account Discovery; T1190 Exploit Public-Facing Application
+
+Hypothesis : A user enumerates account or customer ids by changing object identifiers in requests 
+
+Required log sources :
+    - api gateway logs
+    - application logs
+    - waf
+    - timegenerated/eventtime
+    - user/account/service-prinicpal
+    - host/device/asset
+    - sourceip/geo/asn/destip
+    - action/result/status
+    - application/resource/object
+
+Building Blocks Design 
+
+BB Sequential Object ID Pattern
+BB Sensitive Objects
+BB Normal Pagination Exclusion 
+
+Rule Creation logic
+
+rule High_Fidelity_Sequential_Object_ID_Access
+{
+  meta:
+    author = "SOC Team"
+    description = "Detect sequential object ID enumeration against sensitive application objects"
+    severity = "Critical"
+    mitre_tactic = "Discovery"
+    mitre_technique = "T1087"
+
+  events:
+
+    // Primary Event
+    $api.metadata.event_type = "NETWORK_HTTP"
+
+    re.regex(
+        $api.target.url,
+        `(?i)(/users/|/orders/|/documents/|/customers/|/records/)`
+    )
+
+    // Building Blocks
+    $pattern.security_result.summary = "SEQUENTIAL_OBJECT_ID_PATTERN"
+
+    $object.security_result.summary = "SENSITIVE_OBJECT"
+
+    $pagination.security_result.summary = "NORMAL_PAGINATION_EXCLUSION"
+
+    $client = $api.principal.ip
+
+  match:
+
+    $client over 60m
+
+  outcome:
+
+    $requests = count($api)
+
+    $risk_score =
+        40 +
+        if(#pattern > 0,20,0) +
+        if(#object > 0,20,0) +
+        if($requests >= 500,20,10) -
+        if(#pagination > 0,30,0)
+
+  condition:
+
+      #api > 0
+
+      and
+
+      #pattern > 0
+
+      and
+
+      #object > 0
+
+      and
+
+      #pagination == 0
+
+      and
+
+      $requests >= 100
+
+      and
+
+      $risk_score >= 80
+}
+
+Alert Design 
+
+![alt text](../assets/alertdesign72.png)
+
+Grouping logic
+
+• Group by same user and source IP when identity or cloud activity is involved.
+• Group by same host, process, file hash or destination when endpoint activity is involved.
+• Group by same mailbox, site, file repository or external recipient when email or data activity is involved.
+• Group by same API token, endpoint, session or customer object when application/API activity is involved.
+• Escalate to a higher-level incident when two or more categories appear in the same timeline.
+
+
+Triage Questions
+
+• Is the user, host, application or service account expected to perform this activity?
+• Is there an approved change, service request, incident ticket or business justification?
+• Did the same entity trigger other related alerts before or after this event?
+• Is the source IP, country, ASN, device, user-agent or session new for this entity?
+• Is the affected asset, mailbox, data repository or application business-critical?
+• Was the activity allowed, blocked, partially completed or only attempted?
+• Is there evidence of data access, privilege change, control tampering, lateral movement or persistence?
+• Should this be escalated to L2/L3, Incident Response, IAM, endpoint, cloud, network, application or risk/compliance
+team?
+• What data was accessed, exported, downloaded or uploaded?
+• Is customer, confidential, regulated or long-lived sensitive data involved?
+
+Recommended Response Actions
+
+• Validate the alert against the simulated or real evidence timeline and preserve raw events.
+• Enrich the entities with user role, asset owner, department, asset criticality, privilege level and recent activity.
+• Check for matching activity across SIEM, EDR, identity, cloud, proxy, email, application and network telemetry.
+• Escalate according to the incident classification and business impact, not only the technical event type.
+• Document the final decision, containment actions, evidence and closure rationale in the case record.
+• Block or rate-limit malicious source where justified, rotate exposed tokens and validate application-side impact.
+• Coordinate with application, network and infrastructure teams for evidence and containment.
+
+False Positive Possibilities
+
+• Approved maintenance, migration, testing, vulnerability assessment or administrative activity.
+• Known automation account, service integration, backup process, security tool, scanner or deployment platform.
+• Business travel, remote work, vendor support activity or approved temporary access.
+• False reputation match, geolocation inaccuracy, NAT/proxy aggregation or log parsing issue.
+• Application behaviour change after release, patch, policy update or workflow redesign.
+
+# usecase 73 : Broken Function level authorisation indicator
+
+Category : API, Application and Web Security
+Mitre att&ck mapping : T1190 Exploit Public-Facing Application; T1098 Account Manipulation
+
+Hypothesis : A normal user succesfully accesses an administrative api endpoint.
+
+Required log sources :
+    - api gateway logs
+    - application authz logs
+      - dentifies the application, mailbox,SharePoint site, API endpoint, database, cloud object, file path or business resource touched during Broken Function Level Authorisation Indicator. 
+    - timegenerated/eventtime
+    - user/account/service-principal
+    - host/device/asset
+    - sourceip/geo/asn/destip
+    - action/result/status
+    - application/resource/object 
+
+Building Blocks Design 
+
+BB Admin endpoints
+BB Non-Admin Users
+BB HTTP 200 or Admin API
+
+Rule Creation logic 
+
+rule High_Fidelity_Broken_Function_Level_Authorization
+{
+  meta:
+    author = "SOC Team"
+    description = "Detect successful access to privileged API functions by non-administrative users"
+    severity = "Critical"
+    mitre_tactic = "Privilege Escalation"
+    mitre_technique = "T1068"
+
+  events:
+
+    // Primary Event
+    $api.metadata.event_type = "NETWORK_HTTP"
+
+    // Building Blocks
+    $admin.security_result.summary = "ADMIN_ENDPOINT"
+
+    $nonadmin.security_result.summary = "NON_ADMIN_USER"
+
+    $success.security_result.summary = "HTTP_200_ON_ADMIN_API"
+
+    $user = $api.principal.user.userid
+
+  match:
+
+    $user over 60m
+
+  outcome:
+
+    $requests = count($api)
+
+    $risk_score =
+        40 +
+        if(#admin > 0,20,0) +
+        if(#nonadmin > 0,20,0) +
+        if(#success > 0,20,0)
+
+  condition:
+
+      #api > 0
+
+      and
+
+      #admin > 0
+
+      and
+
+      #nonadmin > 0
+
+      and
+
+      #success > 0
+
+      and
+
+      $risk_score >= 80
+}
+
+Alert Design 
+
+![alt text](../assets/alertdesign73.png)
+
+Grouping logic 
+
+• Group by same user and source IP when identity or cloud activity is involved.
+• Group by same host, process, file hash or destination when endpoint activity is involved.
+• Group by same mailbox, site, file repository or external recipient when email or data activity is involved.
+• Group by same API token, endpoint, session or customer object when application/API activity is involved.
+• Escalate to a higher-level incident when two or more categories appear in the same timeline.
+
+Triage Questions
+
+• Is the user, host, application or service account expected to perform this activity?
+• Is there an approved change, service request, incident ticket or business justification?
+• Did the same entity trigger other related alerts before or after this event?
+• Is the source IP, country, ASN, device, user-agent or session new for this entity?
+• Is the affected asset, mailbox, data repository or application business-critical?
+• Was the activity allowed, blocked, partially completed or only attempted?
+• Is there evidence of data access, privilege change, control tampering, lateral movement or persistence?
+• Should this be escalated to L2/L3, Incident Response, IAM, endpoint, cloud, network, application or risk/compliance
+team?
+• What data was accessed, exported, downloaded or uploaded?
+• Is customer, confidential, regulated or long-lived sensitive data involved?
+
+Recommended Response Actions
+
+• Validate the alert against the simulated or real evidence timeline and preserve raw events.
+• Enrich the entities with user role, asset owner, department, asset criticality, privilege level and recent activity.
+• Check for matching activity across SIEM, EDR, identity, cloud, proxy, email, application and network telemetry.
+• Escalate according to the incident classification and business impact, not only the technical event type.
+• Document the final decision, containment actions, evidence and closure rationale in the case record.
+• Block or rate-limit malicious source where justified, rotate exposed tokens and validate application-side impact.
+• Coordinate with application, network and infrastructure teams for evidence and containment.
+
+False Positive Possibilities
+
+• Approved maintenance, migration, testing, vulnerability assessment or administrative activity.
+• Known automation account, service integration, backup process, security tool, scanner or deployment platform.
+• Business travel, remote work, vendor support activity or approved temporary access.
+• False reputation match, geolocation inaccuracy, NAT/proxy aggregation or log parsing issue.
+• Application behaviour change after release, patch, policy update or workflow redesign.
+
+Tuning Notes
+
+• Create and maintain the building blocks used by this rule: BB: Admin Endpoints, BB: Non-Admin Users, BB: HTTP 200
+on Admin API.
+• Do not tune by broad user or IP exclusion alone. Prefer conditional exclusions using asset, application, time window,
+change ticket and expected source.
+• Use dynamic baselines per user, host, application or service account where possible. A single global threshold will
+create noise or miss high-risk low-volume activity.
+• Review the rule after every confirmed true positive, false positive spike, application migration, logging schema change
+or major incident.
+• Record tuning decisions in the use case register so future analysts understand why thresholds, exceptions and
+suppression rules exist
+
+# usecase 74 : WAF Exploit Attempt Allowed
+
+Category : API, Application and Web Security
+Mitre att&ck mapping : T1190 Exploit Public-Facing Application
+
+Hypothesis : WAF detects SQL injection or exploit pattern but the request is allowed and returns http 200
+
+Required log sources :
+    - waf logs
+    - application logs
+    - edr server logs
+    - timegenerated/eventtime
+    - user/account/service-principal
+    - host/device/asset
+    - sourceip/geo/asn/destip
+    - action/result/status
+    - application/resource/object 
+
+Building Blocks Design 
+
+BB WAF Signature
+BB Action Allowed
+BB Internal-facing Apps
+
+Rule Creation logic
+
+rule High_Fidelity_WAF_Exploit_Attempt_Allowed
+{
+  meta:
+    author = "SOC Team"
+    description = "Detect exploit attempts allowed by the WAF against Internet-facing applications"
+    severity = "Critical"
+    mitre_tactic = "Initial Access"
+    mitre_technique = "T1190"
+
+  events:
+
+    // WAF Event
+    $waf.metadata.event_type = "NETWORK_HTTP"
+
+    // Building Blocks
+    $signature.security_result.summary = "WAF_ATTACK_SIGNATURE"
+
+    $allowed.security_result.summary = "ACTION_ALLOWED"
+
+    $internet.security_result.summary = "INTERNET_FACING_APPLICATION"
+
+    $src_ip = $waf.principal.ip
+
+  match:
+
+    $src_ip over 60m
+
+  outcome:
+
+    $attempts = count($waf)
+
+    $risk_score =
+        40 +
+        if(#signature > 0,20,0) +
+        if(#allowed > 0,20,0) +
+        if(#internet > 0,20,0)
+
+  condition:
+
+      #waf > 0
+
+      and
+
+      #signature > 0
+
+      and
+
+      #allowed > 0
+
+      and
+
+      #internet > 0
+
+      and
+
+      $risk_score >= 80
+}
+
+Alert Design 
+
+![alt text](../assets/alertdesign74.png)
+
+Grouping logic
+
+• Group by same user and source IP when identity or cloud activity is involved.
+• Group by same host, process, file hash or destination when endpoint activity is involved.
+• Group by same mailbox, site, file repository or external recipient when email or data activity is involved.
+• Group by same API token, endpoint, session or customer object when application/API activity is involved.
+• Escalate to a higher-level incident when two or more categories appear in the same timeline.
+
+
+Triage Questions
+
+• Is the user, host, application or service account expected to perform this activity?
+• Is there an approved change, service request, incident ticket or business justification?
+• Did the same entity trigger other related alerts before or after this event?
+• Is the source IP, country, ASN, device, user-agent or session new for this entity?
+• Is the affected asset, mailbox, data repository or application business-critical?
+• Was the activity allowed, blocked, partially completed or only attempted?
+• Is there evidence of data access, privilege change, control tampering, lateral movement or persistence?
+• Should this be escalated to L2/L3, Incident Response, IAM, endpoint, cloud, network, application or risk/compliance
+team?
+• What data was accessed, exported, downloaded or uploaded?
+• Is customer, confidential, regulated or long-lived sensitive data involved?
+
+Recommended Response Actions
+
+• Validate the alert against the simulated or real evidence timeline and preserve raw events.
+• Enrich the entities with user role, asset owner, department, asset criticality, privilege level and recent activity.
+• Check for matching activity across SIEM, EDR, identity, cloud, proxy, email, application and network telemetry.
+• Escalate according to the incident classification and business impact, not only the technical event type.
+• Document the final decision, containment actions, evidence and closure rationale in the case record.
+• Block or rate-limit malicious source where justified, rotate exposed tokens and validate application-side impact.
+• Coordinate with application, network and infrastructure teams for evidence and containment.
+
+False Positive Possibilities
+
+• Approved maintenance, migration, testing, vulnerability assessment or administrative activity.
+• Known automation account, service integration, backup process, security tool, scanner or deployment platform.
+• Business travel, remote work, vendor support activity or approved temporary access.
+• False reputation match, geolocation inaccuracy, NAT/proxy aggregation or log parsing issue.
+• Application behaviour change after release, patch, policy update or workflow redesign.
+
+# usecase 75 : Web exploit followed by Server Process Creation
+
+Category : API, Application and Web Security
+Mitre att&ck mapping : T1190 Exploit Public-Facing Application; T1059 Command and Scripting Interpreter
+
+Hypothesis : A suspicous web request is followed by command shell execution on the web server
+
+Required log sources :
+    - waf logs
+    - edr server logs
+    - web server logs
+    - timegenerated/eventtime
+    - user/account/service-principal
+    - host/device/asset
+    - sourceip/geo/asn/destip
+    - action/result/status
+    - application/resource/object 
+  
+Building Blocks Design 
+
+BB Exploit Attempt
+BB Server Process Creation 
+BB External Callback
+
+Rule Creation logic 
+
+rule High_Fidelity_Web_Exploit_Server_Process_Creation
+{
+  meta:
+    author = "SOC Team"
+    description = "Detect successful web exploitation resulting in server-side process execution"
+    severity = "Critical"
+    mitre_tactic = "Execution"
+    mitre_technique = "T1059"
+
+  events:
+
+    // WAF Detection
+    $waf.metadata.event_type = "NETWORK_HTTP"
+
+    // Server Process
+    $proc.metadata.event_type = "PROCESS_LAUNCH"
+
+    // External Callback
+    $callback.metadata.event_type = "NETWORK_CONNECTION"
+
+    // Building Blocks
+    $exploit.security_result.summary = "EXPLOIT_ATTEMPT"
+
+    $process.security_result.summary = "SERVER_PROCESS_CREATION"
+
+    $external.security_result.summary = "EXTERNAL_CALLBACK"
+
+    $host = $proc.principal.hostname
+
+    $proc.principal.hostname = $waf.target.hostname
+
+    $callback.principal.hostname = $host
+
+  match:
+
+    $host over 30m
+
+  outcome:
+
+    $risk_score =
+        40 +
+        if(#exploit > 0,20,0) +
+        if(#process > 0,20,0) +
+        if(#external > 0,20,0)
+
+  condition:
+
+      #waf > 0
+
+      and
+
+      #proc > 0
+
+      and
+
+      #exploit > 0
+
+      and
+
+      #process > 0
+
+      and
+
+      $risk_score >= 80
+}
+
+Alert Design 
+
+![alt text](../assets/alertdesign75.png)
+
+Grouping logic 
+
+• Group by same user and source IP when identity or cloud activity is involved.
+• Group by same host, process, file hash or destination when endpoint activity is involved.
+• Group by same mailbox, site, file repository or external recipient when email or data activity is involved.
+• Group by same API token, endpoint, session or customer object when application/API activity is involved.
+• Escalate to a higher-level incident when two or more categories appear in the same timeline.
+
+Triage Questions
+
+• Is the user, host, application or service account expected to perform this activity?
+• Is there an approved change, service request, incident ticket or business justification?
+• Did the same entity trigger other related alerts before or after this event?
+• Is the source IP, country, ASN, device, user-agent or session new for this entity?
+• Is the affected asset, mailbox, data repository or application business-critical?
+• Was the activity allowed, blocked, partially completed or only attempted?
+• Is there evidence of data access, privilege change, control tampering, lateral movement or persistence?
+• Should this be escalated to L2/L3, Incident Response, IAM, endpoint, cloud, network, application or risk/compliance
+team?
+• What data was accessed, exported, downloaded or uploaded?
+• Is customer, confidential, regulated or long-lived sensitive data involved?
+
+Recommended Response Actions
+
+• Validate the alert against the simulated or real evidence timeline and preserve raw events.
+• Enrich the entities with user role, asset owner, department, asset criticality, privilege level and recent activity.
+• Check for matching activity across SIEM, EDR, identity, cloud, proxy, email, application and network telemetry.
+• Escalate according to the incident classification and business impact, not only the technical event type.
+• Document the final decision, containment actions, evidence and closure rationale in the case record.
+• Block or rate-limit malicious source where justified, rotate exposed tokens and validate application-side impact.
+• Coordinate with application, network and infrastructure teams for evidence and containment.
+
+False Positive Possibilities
+
+• Approved maintenance, migration, testing, vulnerability assessment or administrative activity.
+• Known automation account, service integration, backup process, security tool, scanner or deployment platform.
+• Business travel, remote work, vendor support activity or approved temporary access.
+• False reputation match, geolocation inaccuracy, NAT/proxy aggregation or log parsing issue.
+• Application behaviour change after release, patch, policy update or workflow redesign.
+
+# usecase 76 : Suspicious File Upload to Web applications
+
+Category : API, Application and Web Security
+Mitre att&ck mapping : T1190 Exploit Public-Facing Application; T1505.003 Web Shell
+
+Hypothesis : A user uploads a file with script-like content or extension to a web-accesible folder
+
+Required log sources :
+    - waf logs
+    - application logs
+    - edr file events
+    - timegenerated/eventtime
+    - user/account/service-prinicpal
+    - host/device/asset
+    - sourceip/geo/asn/destip
+    - action/result/status
+    - application/resource/object 
+    
+Building Blocks Design 
+
+BB Upload Endpoint
+BB Executable Extension 
+BB Web Directory Write
+
+Rule Creation logic 
+
+rule High_Fidelity_Suspicious_File_Upload
+{
+  meta:
+    author = "SOC Team"
+    description = "Detect suspicious uploads followed by file creation on the web server"
+    severity = "Critical"
+    mitre_tactic = "Initial Access"
+    mitre_technique = "T1190"
+
+  events:
+
+    // Upload Event
+    $upload.metadata.event_type = "NETWORK_HTTP"
+
+    // Server File Creation
+    $file.metadata.event_type = "FILE_CREATION"
+
+    // Building Blocks
+    $endpoint.security_result.summary = "UPLOAD_ENDPOINT"
+
+    $extension.security_result.summary = "EXECUTABLE_EXTENSION"
+
+    $webdir.security_result.summary = "WEB_DIRECTORY_WRITE"
+
+    $host = $upload.target.hostname
+
+    $file.principal.hostname = $host
+
+  match:
+
+    $host over 30m
+
+  outcome:
+
+    $risk_score =
+        40 +
+        if(#endpoint > 0,15,0) +
+        if(#extension > 0,20,0) +
+        if(#webdir > 0,25,0)
+
+  condition:
+
+      #upload > 0
+
+      and
+
+      #endpoint > 0
+
+      and
+
+      #extension > 0
+
+      and
+
+      #webdir > 0
+
+      and
+
+      $risk_score >= 80
+}
+
+Alert Design 
+
+![alt text](../assets/alertdesign76.png)
+
+Grouping logic 
+
+• Group by same user and source IP when identity or cloud activity is involved.
+• Group by same host, process, file hash or destination when endpoint activity is involved.
+• Group by same mailbox, site, file repository or external recipient when email or data activity is involved.
+• Group by same API token, endpoint, session or customer object when application/API activity is involved.
+• Escalate to a higher-level incident when two or more categories appear in the same timeline.
+
+Triage Questions
+
+• Is the user, host, application or service account expected to perform this activity?
+• Is there an approved change, service request, incident ticket or business justification?
+• Did the same entity trigger other related alerts before or after this event?
+• Is the source IP, country, ASN, device, user-agent or session new for this entity?
+• Is the affected asset, mailbox, data repository or application business-critical?
+• Was the activity allowed, blocked, partially completed or only attempted?
+• Is there evidence of data access, privilege change, control tampering, lateral movement or persistence?
+• Should this be escalated to L2/L3, Incident Response, IAM, endpoint, cloud, network, application or risk/compliance
+team?
+• What data was accessed, exported, downloaded or uploaded?
+• Is customer, confidential, regulated or long-lived sensitive data involved?
+
+Recommended Response Actions
+
+• Validate the alert against the simulated or real evidence timeline and preserve raw events.
+• Enrich the entities with user role, asset owner, department, asset criticality, privilege level and recent activity.
+• Check for matching activity across SIEM, EDR, identity, cloud, proxy, email, application and network telemetry.
+• Escalate according to the incident classification and business impact, not only the technical event type.
+• Document the final decision, containment actions, evidence and closure rationale in the case record.
+• Block or rate-limit malicious source where justified, rotate exposed tokens and validate application-side impact.
+• Coordinate with application, network and infrastructure teams for evidence and containment.
+
+False Positive Possibilities
+
+• Approved maintenance, migration, testing, vulnerability assessment or administrative activity.
+• Known automation account, service integration, backup process, security tool, scanner or deployment platform.
+• Business travel, remote work, vendor support activity or approved temporary access.
+• False reputation match, geolocation inaccuracy, NAT/proxy aggregation or log parsing issue.
+• Application behaviour change after release, patch, policy update or workflow redesign.
+
+# usecase 77 : Admin Portal Brute Force
+
+Category :API, Application and Web Security
+Mitre att&ck mapping : T1110 Brute Force; T1190 Exploit Public-Facing Application
+
+hypothesis : A public admin portal receives repeated failed login attempts from one or more sources
+
+Required log sources: 
+    - waf logs
+    - application login logs
+    - iam logs
+    - timegenerated/eventtime
+    - user/account/service-prinicpal
+    - host/device/asset
+    - sourceip/geo/asn/destip
+    - action/result/status
+    - application/resource/object 
+
+Building Block Design 
+
+BB Admin Portal URLs
+BB Failed Login Threshold
+BB External Source IP
+
+Rule Creation logic
+
+rule High_Fidelity_Admin_Portal_Brute_Force
+{
+  meta:
+    author = "SOC Team"
+    description = "Detect repeated authentication failures against admin portals from external sources"
+    severity = "Critical"
+    mitre_tactic = "Credential Access"
+    mitre_technique = "T1110"
+
+  events:
+
+    // Login Events
+    $login.metadata.event_type = "USER_LOGIN"
+
+    $login.security_result.action = "BLOCK"
+
+    // Building Blocks
+    $admin.security_result.summary = "ADMIN_PORTAL_URL"
+
+    $threshold.security_result.summary = "FAILED_LOGIN_THRESHOLD"
+
+    $external.security_result.summary = "EXTERNAL_SOURCE_IP"
+
+    $src_ip = $login.principal.ip
+
+  match:
+
+    $src_ip over 30m
+
+  outcome:
+
+    $failed_logins = count($login)
+
+    $risk_score =
+        40 +
+        if(#admin > 0,20,0) +
+        if(#external > 0,20,0) +
+        if($failed_logins >= 50,20,10)
+
+  condition:
+
+      #login > 0
+
+      and
+
+      #admin > 0
+
+      and
+
+      #external > 0
+
+      and
+
+      #threshold > 0
+
+      and
+
+      $risk_score >= 80
+}
+
+
+Alert Design 
+
+![alt text](../assets/alertdesign77.png)
+
+Grouping logic
+
+• Group by same user and source IP when identity or cloud activity is involved.
+• Group by same host, process, file hash or destination when endpoint activity is involved.
+• Group by same mailbox, site, file repository or external recipient when email or data activity is involved.
+• Group by same API token, endpoint, session or customer object when application/API activity is involved.
+• Escalate to a higher-level incident when two or more categories appear in the same timeline.
+
+
+Triage Questions
+
+• Is the user, host, application or service account expected to perform this activity?
+• Is there an approved change, service request, incident ticket or business justification?
+• Did the same entity trigger other related alerts before or after this event?
+• Is the source IP, country, ASN, device, user-agent or session new for this entity?
+• Is the affected asset, mailbox, data repository or application business-critical?
+• Was the activity allowed, blocked, partially completed or only attempted?
+• Is there evidence of data access, privilege change, control tampering, lateral movement or persistence?
+• Should this be escalated to L2/L3, Incident Response, IAM, endpoint, cloud, network, application or risk/compliance
+team?
+• What data was accessed, exported, downloaded or uploaded?
+• Is customer, confidential, regulated or long-lived sensitive data involved?
+
+Recommended Response Actions
+
+• Validate the alert against the simulated or real evidence timeline and preserve raw events.
+• Enrich the entities with user role, asset owner, department, asset criticality, privilege level and recent activity.
+• Check for matching activity across SIEM, EDR, identity, cloud, proxy, email, application and network telemetry.
+• Escalate according to the incident classification and business impact, not only the technical event type.
+• Document the final decision, containment actions, evidence and closure rationale in the case record.
+• Block or rate-limit malicious source where justified, rotate exposed tokens and validate application-side impact.
+• Coordinate with application, network and infrastructure teams for evidence and containment.
+
+False Positive Possibilities
+
+• Approved maintenance, migration, testing, vulnerability assessment or administrative activity.
+• Known automation account, service integration, backup process, security tool, scanner or deployment platform.
+• Business travel, remote work, vendor support activity or approved temporary access.
+• False reputation match, geolocation inaccuracy, NAT/proxy aggregation or log parsing issue.
+• Application behaviour change after release, patch, policy update or workflow redesign.
+
+# usecase 78 : Business Logic Abuse in Transcation Flow 
+
+Category : API, Application and Web Security
+Mitre att&ck mapping : T1565 Data Manipulation; T1530 Data from Cloud Storage
+
+Hypothesis : 
+A user repeatedly performs small transcations or state changes that avoid normal thresholds but slow abuse pattern
+
+Required log sources :
+    - Application logs
+    - fraud logs
+    - api gateway
+    - core transaction logs
+    - timegenerated/eventtime
+    - user/account/service-prinicpal
+    - host/device/asset
+    - sourceip/geo/asn/destip
+    - action/result/status
+    - application/resource/object 
+
+Building Blocks Design 
+
+BB Sensitive Business Flow
+BB Transaction Baseline
+BB Fraud Rule Hit
+
+Rule Creation logic 
+
+rule High_Fidelity_Business_Logic_Abuse
+{
+  meta:
+    author = "SOC Team"
+    description = "Detect business logic abuse using fraud intelligence and transaction baselines"
+    severity = "Critical"
+    mitre_tactic = "Impact"
+
+  events:
+
+    // Transaction Activity
+    $txn.metadata.event_type = "APPLICATION_LOG"
+
+    // Building Blocks
+    $flow.security_result.summary = "SENSITIVE_BUSINESS_FLOW"
+
+    $baseline.security_result.summary = "TRANSACTION_BASELINE"
+
+    $fraud.security_result.summary = "FRAUD_RULE_HIT"
+
+    $user = $txn.principal.user.userid
+
+  match:
+
+    $user over 30m
+
+  outcome:
+
+    $risk_score =
+        40 +
+        if(#flow > 0,20,0) +
+        if(#baseline > 0,15,0) +
+        if(#fraud > 0,25,0)
+
+  condition:
+
+      #txn > 0
+
+      and
+
+      #flow > 0
+
+      and
+
+      #baseline > 0
+
+      and
+
+      #fraud > 0
+
+      and
+
+      $risk_score >= 80
+}
+
+Alert Design 
+
+![alt text](../assets/alertdesign78.png)
+
+Grouping logic 
+
+• Group by same user and source IP when identity or cloud activity is involved.
+• Group by same host, process, file hash or destination when endpoint activity is involved.
+• Group by same mailbox, site, file repository or external recipient when email or data activity is involved.
+• Group by same API token, endpoint, session or customer object when application/API activity is involved.
+• Escalate to a higher-level incident when two or more categories appear in the same timeline.
+
+
+Triage Questions
+
+• Is the user, host, application or service account expected to perform this activity?
+• Is there an approved change, service request, incident ticket or business justification?
+• Did the same entity trigger other related alerts before or after this event?
+• Is the source IP, country, ASN, device, user-agent or session new for this entity?
+• Is the affected asset, mailbox, data repository or application business-critical?
+• Was the activity allowed, blocked, partially completed or only attempted?
+• Is there evidence of data access, privilege change, control tampering, lateral movement or persistence?
+• Should this be escalated to L2/L3, Incident Response, IAM, endpoint, cloud, network, application or risk/compliance
+team?
+• What data was accessed, exported, downloaded or uploaded?
+• Is customer, confidential, regulated or long-lived sensitive data involved?
+
+Recommended Response Actions
+
+• Validate the alert against the simulated or real evidence timeline and preserve raw events.
+• Enrich the entities with user role, asset owner, department, asset criticality, privilege level and recent activity.
+• Check for matching activity across SIEM, EDR, identity, cloud, proxy, email, application and network telemetry.
+• Escalate according to the incident classification and business impact, not only the technical event type.
+• Document the final decision, containment actions, evidence and closure rationale in the case record.
+• Block or rate-limit malicious source where justified, rotate exposed tokens and validate application-side impact.
+• Coordinate with application, network and infrastructure teams for evidence and containment.
+
+False Positive Possibilities
+
+• Approved maintenance, migration, testing, vulnerability assessment or administrative activity.
+• Known automation account, service integration, backup process, security tool, scanner or deployment platform.
+• Business travel, remote work, vendor support activity or approved temporary access.
+• False reputation match, geolocation inaccuracy, NAT/proxy aggregation or log parsing issue.
+• Application behaviour change after release, patch, policy update or workflow redesign.
+
+# usecase 79 : Internal Host Communicates with known malicious IP
+
+Category : Network, Perimeter and Threat Intelligence
+Mitre att&ck mapping : T1071 Application Layer Protocol
+
+Hypothesis : An internal host initiate outbount communication to an IP Address present in threat intelligence.
+
+Required log sources :
+    - Firewall logs
+    - proxy logs
+    - threat intel 
+    - edr network
+    - timegenerated/eventtime
+    - user/account/service-principal
+    - host/device/asset
+    - sourceip/geo/asn/destip
+    - action/result/status
+    - application/resource/object
+
+Building Blocks Design 
+
+BB Threat Intel IP Match 
+BB Internal Asset Criticality 
+BB Allowed Business Partners
+
+Rule creation logic
+
+rule High_Fidelity_Malicious_IP_Communication
+{
+  meta:
+    author = "SOC Team"
+    description = "Detect communication with known malicious infrastructure using threat intelligence correlation"
+    severity = "Critical"
+    mitre_tactic = "Command and Control"
+    mitre_technique = "T1071"
+
+  events:
+
+    // Firewall / Proxy Connection
+    $conn.metadata.event_type = "NETWORK_CONNECTION"
+
+    // Building Blocks
+    $ti.security_result.summary = "THREAT_INTEL_IP_MATCH"
+
+    $critical.security_result.summary = "INTERNAL_ASSET_CRITICALITY"
+
+    $partner.security_result.summary = "ALLOWED_BUSINESS_PARTNERS"
+
+    $host = $conn.principal.hostname
+
+  match:
+
+    $host over 30m
+
+  outcome:
+
+    $risk_score =
+        40 +
+        if(#ti > 0,30,0) +
+        if(#critical > 0,20,0) -
+        if(#partner > 0,20,0)
+
+  condition:
+
+      #conn > 0
+
+      and
+
+      #ti > 0
+
+      and
+
+      $risk_score >= 80
+}
+
+Alert Design 
+
+![alt text](../assets/alertdesign79.png)
+
+Grouping logic 
+
+• Group by same user and source IP when identity or cloud activity is involved.
+• Group by same host, process, file hash or destination when endpoint activity is involved.
+• Group by same mailbox, site, file repository or external recipient when email or data activity is involved.
+• Group by same API token, endpoint, session or customer object when application/API activity is involved.
+• Escalate to a higher-level incident when two or more categories appear in the same timeline.
+
+
+Triage Questions
+
+• Is the user, host, application or service account expected to perform this activity?
+• Is there an approved change, service request, incident ticket or business justification?
+• Did the same entity trigger other related alerts before or after this event?
+• Is the source IP, country, ASN, device, user-agent or session new for this entity?
+• Is the affected asset, mailbox, data repository or application business-critical?
+• Was the activity allowed, blocked, partially completed or only attempted?
+• Is there evidence of data access, privilege change, control tampering, lateral movement or persistence?
+• Should this be escalated to L2/L3, Incident Response, IAM, endpoint, cloud, network, application or risk/compliance
+team?
+
+Recommended Response Actions
+
+• Validate the alert against the simulated or real evidence timeline and preserve raw events.
+• Enrich the entities with user role, asset owner, department, asset criticality, privilege level and recent activity.
+• Check for matching activity across SIEM, EDR, identity, cloud, proxy, email, application and network telemetry.
+• Escalate according to the incident classification and business impact, not only the technical event type.
+• Document the final decision, containment actions, evidence and closure rationale in the case record.
+• Block or rate-limit malicious source where justified, rotate exposed tokens and validate application-side impact.
+• Coordinate with application, network and infrastructure teams for evidence and containment.
+
+False Positive Possibilities
+
+• Approved maintenance, migration, testing, vulnerability assessment or administrative activity.
+• Known automation account, service integration, backup process, security tool, scanner or deployment platform.
+• Business travel, remote work, vendor support activity or approved temporary access.
+• False reputation match, geolocation inaccuracy, NAT/proxy aggregation or log parsing issue.
+• Application behaviour change after release, patch, policy update or workflow redesign.
+
+# usecase 80 : Malicious Domain Resolution 
+
+category : Network, Perimeter and Threat Intelligence
+Mitre att&ck mapping : T1071.004 DNS
+
+Hypothesis : A workstation resolves to a domain known to be associated with malware or credential phishing 
+
+Required log sources :
+    - dns logs
+    - proxy logs
+    - threat intel 
+    - timegenerated/eventtime
+    - user/account/service-principal
+    - host/device/asset
+    - sourceip/geo/asn/destip
+    - action/result/status
+    - application/resource/object 
+
+Building Blocks Design 
+
+BB Threat Intel Domain Match 
+BB Newly Registered Domain 
+BB Internal Host 
+
+
+Rule Creation logic 
+
+rule Enterprise_Malicious_Domain_Resolution
+{
+  meta:
+    severity = "Critical"
+    attack_technique = "T1071.004"
+
+  events:
+
+    $dns.metadata.event_type = "NETWORK_DNS"
+
+    $ti.security_result.summary = "THREAT_INTEL_DOMAIN_MATCH"
+
+    $nrd.security_result.summary = "NEWLY_REGISTERED_DOMAIN"
+
+    $host = $dns.principal.hostname
+
+  match:
+
+    $host over 30m
+
+  outcome:
+
+    $risk_score =
+        if(#nrd > 0,100,90)
+
+  condition:
+
+    #dns > 0
+
+    and
+
+    #ti > 0
+
+    and
+
+    not $dns.network.dns.questions.name in
+        %approved_partner_domains
+
+    and
+
+    not $host in
+        %approved_security_scanners
+}
+
+
+
+Alert Design 
+
+![alt text](../assets/alertdesign80.png)
+
+Grouping logic 
+
+• Group by same user and source IP when identity or cloud activity is involved.
+• Group by same host, process, file hash or destination when endpoint activity is involved.
+• Group by same mailbox, site, file repository or external recipient when email or data activity is involved.
+• Group by same API token, endpoint, session or customer object when application/API activity is involved.
+• Escalate to a higher-level incident when two or more categories appear in the same timeline.
+
+Triage Questions
+
+• Is the user, host, application or service account expected to perform this activity?
+• Is there an approved change, service request, incident ticket or business justification?
+• Did the same entity trigger other related alerts before or after this event?
+• Is the source IP, country, ASN, device, user-agent or session new for this entity?
+• Is the affected asset, mailbox, data repository or application business-critical?
+• Was the activity allowed, blocked, partially completed or only attempted?
+• Is there evidence of data access, privilege change, control tampering, lateral movement or persistence?
+• Should this be escalated to L2/L3, Incident Response, IAM, endpoint, cloud, network, application or risk/compliance
+team?
+
+Recommended Response Actions
+
+• Validate the alert against the simulated or real evidence timeline and preserve raw events.
+• Enrich the entities with user role, asset owner, department, asset criticality, privilege level and recent activity.
+• Check for matching activity across SIEM, EDR, identity, cloud, proxy, email, application and network telemetry.
+• Escalate according to the incident classification and business impact, not only the technical event type.
+• Document the final decision, containment actions, evidence and closure rationale in the case record.
+• Block or rate-limit malicious source where justified, rotate exposed tokens and validate application-side impact.
+• Coordinate with application, network and infrastructure teams for evidence and containment.
+False Positive Possibilities
 • Approved maintenance, migration, testing, vulnerability assessment or administrative activity.
 • Known automation account, service integration, backup process, security tool, scanner or deployment platform.
 • Business travel, remote work, vendor support activity or approved temporary access.
