@@ -10566,3 +10566,1451 @@ False Positive Possibilities
 • Business travel, remote work, vendor support activity or approved temporary access.
 • False reputation match, geolocation inaccuracy, NAT/proxy aggregation or log parsing issue.
 • Application behaviour change after release, patch, policy update or workflow redesign.
+
+# usecase 90 : Mass sharepoint downoad by user 
+
+Category : Data Leakage, Insider Risk and AI Security
+Mitre att&ck mapping : T1530 Data from Cloud Storage 
+
+Hypothesis : 
+
+A user downloads thosands of files from a sensitive site within a short time 
+
+Required log sources :
+    - sharepoint audit 
+    - m365 audit 
+    - casb 
+    - timegenerated/eventtime
+    - host/device/asset 
+    - sourceip/geo/asn/destip
+    - action/result/status 
+    - application/resource/object 
+
+Building Blocks Design 
+
+BB Download Volume Baseline 
+BB Sensitive Sites 
+BB Risky Sign in 
+
+Rule Creation logic 
+
+rule Enterprise_Mass_SharePoint_Download
+{
+  meta:
+    severity = "Critical"
+    attack_technique = "T1213"
+
+  events:
+
+    $download.metadata.event_type = "FILE_DOWNLOAD"
+
+    $baseline.security_result.summary = "DOWNLOAD_VOLUME_BASELINE"
+
+    $site.security_result.summary = "SENSITIVE_SITES"
+
+    $signin.security_result.summary = "RISKY_SIGN_IN"
+
+    $user = $download.principal.user.userid
+
+    $host = $download.principal.hostname
+
+  match:
+
+    $user over 60m
+
+  outcome:
+
+    $risk_score =
+        50 +
+        if(#baseline > 0,20,0) +
+        if(#site > 0,15,0) +
+        if(#signin > 0,15,0)
+
+  condition:
+
+      #download > 0
+
+      and
+
+      #baseline > 0
+
+      and
+
+      (
+          #site > 0
+          or
+          #signin > 0
+      )
+
+      and
+
+      not $user in
+          %approved_bulk_download_users
+
+      and
+
+      not $host in
+          %approved_migration_hosts
+}
+
+Alert Design
+
+Field Example Value
+Alert Name 2026 - Mass SharePoint Download by User
+Incident Name Possible Mass SharePoint Download by User Investigation
+Primary Entity User, Host, Source IP, Application, Session ID
+Supporting Context GeoIP, ASN, user privilege, device compliance, asset criticality, data sensitivity, threat-
+intel match, related change ticket
+Grouping Key Same user/host/source IP/session/application within 24 hours
+Business Impact Tag Data Leakage, Insider Risk and AI Security
+
+Grouping 
+
+• Group by same user and source IP when identity or cloud activity is involved.
+• Group by same host, process, file hash or destination when endpoint activity is involved.
+• Group by same mailbox, site, file repository or external recipient when email or data activity is involved.
+• Group by same API token, endpoint, session or customer object when application/API activity is involved.
+• Escalate to a higher-level incident when two or more categories appear in the same timeline.
+
+Triage Questions
+• Is the user, host, application or service account expected to perform this activity?
+• Is there an approved change, service request, incident ticket or business justification?
+• Did the same entity trigger other related alerts before or after this event?
+• Is the source IP, country, ASN, device, user-agent or session new for this entity?
+• Is the affected asset, mailbox, data repository or application business-critical?
+• Was the activity allowed, blocked, partially completed or only attempted?
+• Is there evidence of data access, privilege change, control tampering, lateral movement or persistence?
+• Should this be escalated to L2/L3, Incident Response, IAM, endpoint, cloud, network, application or risk/compliance
+team?
+• What data was accessed, exported, downloaded or uploaded?
+• Is customer, confidential, regulated or long-lived sensitive data involved?
+
+Recommended Response Actions
+• Validate the alert against the simulated or real evidence timeline and preserve raw events.
+• Enrich the entities with user role, asset owner, department, asset criticality, privilege level and recent activity.
+• Check for matching activity across SIEM, EDR, identity, cloud, proxy, email, application and network telemetry.
+• Escalate according to the incident classification and business impact, not only the technical event type.
+• Document the final decision, containment actions, evidence and closure rationale in the case record.
+• Identify exactly what data was accessed or transferred and whether regulatory, privacy, customer or management
+notification review is required.
+• Preserve DLP evidence, file access logs, destination details and user confirmation.
+
+False Positive Possibilities
+• Approved maintenance, migration, testing, vulnerability assessment or administrative activity.
+• Known automation account, service integration, backup process, security tool, scanner or deployment platform.
+• Business travel, remote work, vendor support activity or approved temporary access.
+• False reputation match, geolocation inaccuracy, NAT/proxy aggregation or log parsing issue.
+• Application behaviour change after release, patch, policy update or workflow redesign.
+
+# uscase 91 : Sensitive Data Copied to USB 
+
+category : Data Leakage, Insider Risk and AI Security
+mitre att&ck mapping : T1052 Exfiltration Over Physical Medium
+
+Hypothesis : A user copies confidential documents to removeable media. 
+
+Required log sources : 
+    - edr device control 
+    - windows removable storage logs 
+    - dlp 
+    - timegenerated/eventtime 
+    - user/account/service-principal
+    - host/device/asset 
+    - sourceip/geo/asn/destip 
+    - action/result/status 
+    - application/resource/object 
+
+Building Blocks Design 
+
+BB Removal media 
+BB Sensitive File Copy 
+BB Approved USB Devices 
+
+Rule Creation logic 
+
+rule Enterprise_Sensitive_Data_To_USB
+{
+  meta:
+    severity = "Critical"
+    attack_technique = "T1052.001"
+
+  events:
+
+    $copy.metadata.event_type = "FILE_COPY"
+
+    $usb.security_result.summary = "REMOVABLE_MEDIA_INSERTED"
+
+    $dlp.security_result.summary = "SENSITIVE_FILE_COPY"
+
+    $approved.security_result.summary = "APPROVED_USB_DEVICE"
+
+    $user = $copy.principal.user.userid
+
+    $host = $copy.principal.hostname
+
+  match:
+
+    $user over 60m
+
+  outcome:
+
+    $risk_score =
+        50 +
+        if(#usb > 0,20,0) +
+        if(#dlp > 0,20,0) +
+        if(#approved == 0,10,0)
+
+  condition:
+
+      #copy > 0
+
+      and
+
+      #usb > 0
+
+      and
+
+      #dlp > 0
+
+      and
+
+      #approved == 0
+
+      and
+
+      not $user in
+          %approved_usb_users
+
+      and
+
+      not $host in
+          %approved_workstations
+}
+
+Alert Design 
+ 
+Field Example Value
+Alert Name 2026 - Sensitive Data Copied to USB
+Incident Name Possible Sensitive Data Copied to USB Investigation
+Primary Entity User, Host, Source IP, Application, Session ID
+Supporting Context GeoIP, ASN, user privilege, device compliance, asset criticality, data sensitivity, threat-
+intel match, related change ticket
+Grouping Key Same user/host/source IP/session/application within 24 hours
+Business Impact Tag Data Leakage, Insider Risk and AI Security
+
+Grouping 
+
+• Group by same user and source IP when identity or cloud activity is involved.
+• Group by same host, process, file hash or destination when endpoint activity is involved.
+• Group by same mailbox, site, file repository or external recipient when email or data activity is involved.
+• Group by same API token, endpoint, session or customer object when application/API activity is involved.
+• Escalate to a higher-level incident when two or more categories appear in the same timeline.
+
+Triage Questions
+• Is the user, host, application or service account expected to perform this activity?
+• Is there an approved change, service request, incident ticket or business justification?
+• Did the same entity trigger other related alerts before or after this event?
+• Is the source IP, country, ASN, device, user-agent or session new for this entity?
+• Is the affected asset, mailbox, data repository or application business-critical?
+• Was the activity allowed, blocked, partially completed or only attempted?
+• Is there evidence of data access, privilege change, control tampering, lateral movement or persistence?
+• Should this be escalated to L2/L3, Incident Response, IAM, endpoint, cloud, network, application or risk/compliance
+team?
+• What data was accessed, exported, downloaded or uploaded?
+• Is customer, confidential, regulated or long-lived sensitive data involved?
+
+Recommended Response Actions
+• Validate the alert against the simulated or real evidence timeline and preserve raw events.
+• Enrich the entities with user role, asset owner, department, asset criticality, privilege level and recent activity.
+• Check for matching activity across SIEM, EDR, identity, cloud, proxy, email, application and network telemetry.
+• Escalate according to the incident classification and business impact, not only the technical event type.
+• Document the final decision, containment actions, evidence and closure rationale in the case record.
+• Identify exactly what data was accessed or transferred and whether regulatory, privacy, customer or management
+notification review is required.
+• Preserve DLP evidence, file access logs, destination details and user confirmation.
+
+False Positive Possibilities
+• Approved maintenance, migration, testing, vulnerability assessment or administrative activity.
+• Known automation account, service integration, backup process, security tool, scanner or deployment platform.
+• Business travel, remote work, vendor support activity or approved temporary access.
+• False reputation match, geolocation inaccuracy, NAT/proxy aggregation or log parsing issue.
+• Application behaviour change after release, patch, policy update or workflow redesign.
+
+# usecase 92 : Data Access Spike before user exit 
+
+Category : Data Leakage, Insider Risk and AI Security
+Mitre att&ck mapping : T1005 Data from Local System; T1039 Data from Network Shared Drive
+
+Hypothesis : A resigining employeee accessses and downloads far more documents than normal 
+
+Required log sources : 
+    - hr feed 
+    - file server audit 
+    - sharepoint audit 
+    - dlp 
+    - timegenerated/eventtime 
+    - user/account/service-principal
+    - host/device/asset 
+    - sourceip/geo/asn/destip
+    - action/result/status 
+    - application/resource/object 
+    
+Building Blocks Design 
+
+BB Resigned Users
+BB Sensitive Repositories 
+BB Baseline Access Volume 
+
+Rule Creation logic 
+
+rule Enterprise_Data_Access_Before_User_Exit
+{
+  meta:
+    severity = "Critical"
+    attack_technique = "T1213"
+
+  events:
+
+    $access.metadata.event_type = "FILE_READ"
+
+    $hr.security_result.summary = "RESIGNED_USERS"
+
+    $repo.security_result.summary = "SENSITIVE_REPOSITORIES"
+
+    $baseline.security_result.summary = "BASELINE_ACCESS_VOLUME"
+
+    $user = $access.principal.user.userid
+
+    $host = $access.principal.hostname
+
+  match:
+
+    $user over 60m
+
+  outcome:
+
+    $risk_score =
+        50 +
+        if(#hr > 0,20,0) +
+        if(#repo > 0,15,0) +
+        if(#baseline > 0,15,0)
+
+  condition:
+
+      #access > 0
+
+      and
+
+      #hr > 0
+
+      and
+
+      #baseline > 0
+
+      and
+
+      #repo > 0
+
+      and
+
+      not $user in
+          %approved_data_migration_users
+
+      and
+
+      not $host in
+          %approved_migration_hosts
+}
+
+Alert Design 
+
+Field Example Value
+Alert Name 2026 - Data Access Spike Before User Exit
+Incident Name Possible Data Access Spike Before User Exit Investigation
+Primary Entity User, Host, Source IP, Application, Session ID
+Supporting Context GeoIP, ASN, user privilege, device compliance, asset criticality, data sensitivity, threat-
+intel match, related change ticket
+Grouping Key Same user/host/source IP/session/application within 24 hours
+Business Impact Tag Data Leakage, Insider Risk and AI Security
+
+Grouping 
+
+• Group by same user and source IP when identity or cloud activity is involved.
+• Group by same host, process, file hash or destination when endpoint activity is involved.
+• Group by same mailbox, site, file repository or external recipient when email or data activity is involved.
+• Group by same API token, endpoint, session or customer object when application/API activity is involved.
+• Escalate to a higher-level incident when two or more categories appear in the same timeline.
+
+Triage Questions
+• Is the user, host, application or service account expected to perform this activity?
+• Is there an approved change, service request, incident ticket or business justification?
+• Did the same entity trigger other related alerts before or after this event?
+• Is the source IP, country, ASN, device, user-agent or session new for this entity?
+• Is the affected asset, mailbox, data repository or application business-critical?
+• Was the activity allowed, blocked, partially completed or only attempted?
+• Is there evidence of data access, privilege change, control tampering, lateral movement or persistence?
+• Should this be escalated to L2/L3, Incident Response, IAM, endpoint, cloud, network, application or risk/compliance
+team?
+• What data was accessed, exported, downloaded or uploaded?
+• Is customer, confidential, regulated or long-lived sensitive data involved?
+
+Recommended Response Actions
+• Validate the alert against the simulated or real evidence timeline and preserve raw events.
+• Enrich the entities with user role, asset owner, department, asset criticality, privilege level and recent activity.
+• Check for matching activity across SIEM, EDR, identity, cloud, proxy, email, application and network telemetry.
+• Escalate according to the incident classification and business impact, not only the technical event type.
+• Document the final decision, containment actions, evidence and closure rationale in the case record.
+• Identify exactly what data was accessed or transferred and whether regulatory, privacy, customer or management
+notification review is required.
+• Preserve DLP evidence, file access logs, destination details and user confirmation.
+11. False Positive Possibilities
+• Approved maintenance, migration, testing, vulnerability assessment or administrative activity.
+• Known automation account, service integration, backup process, security tool, scanner or deployment platform.
+• Business travel, remote work, vendor support activity or approved temporary access.
+• False reputation match, geolocation inaccuracy, NAT/proxy aggregation or log parsing issue.
+• Application behaviour change after release, patch, policy update or workflow redesign.
+
+# usecase 93 : Priviledged Users Export Sensitive Report 
+
+Category : Data Leakage, Insider Risk and AI Security
+Mitre att&ck mapping : T1005 Data from Local System; T1530 Data from Cloud Storage
+
+Hypothesis : An administrator exports a full customer or employee report outside expected operational need. 
+
+Required log sources : 
+    - application logs 
+    - database audit 
+    - pam logs 
+    - timegenerated/eventtime
+    - user/account/service-principal
+    - host/device/asset 
+    - sourceip/geo/asn/destip
+    - action/result/status 
+    - application/resource/object 
+
+Building Blocks Design 
+
+BB Priviledged Users
+BB Sensitive Export Functions 
+BB Approved Report Requests 
+
+Rule Creation logic 
+
+rule Enterprise_Privileged_User_Report_Export
+{
+  meta:
+    severity = "Critical"
+    attack_technique = "T1213"
+
+  events:
+
+    $export.metadata.event_type = "APPLICATION_ACTIVITY"
+
+    $priv.security_result.summary = "PRIVILEGED_USERS"
+
+    $report.security_result.summary = "SENSITIVE_EXPORT_FUNCTIONS"
+
+    $approved.security_result.summary = "APPROVED_REPORT_REQUESTS"
+
+    $user = $export.principal.user.userid
+
+    $host = $export.principal.hostname
+
+  match:
+
+    $user over 60m
+
+  outcome:
+
+    $risk_score =
+        50 +
+        if(#priv > 0,20,0) +
+        if(#report > 0,20,0) +
+        if(#approved == 0,10,0)
+
+  condition:
+
+      #export > 0
+
+      and
+
+      #priv > 0
+
+      and
+
+      #report > 0
+
+      and
+
+      #approved == 0
+
+      and
+
+      not $user in
+          %approved_report_export_users
+
+      and
+
+      not $host in
+          %approved_reporting_servers
+}
+
+Alert Design
+Field Example Value
+Alert Name 2026 - Privileged User Exports Sensitive Report
+Incident Name Possible Privileged User Exports Sensitive Report Investigation
+Primary Entity User, Host, Source IP, Application, Session ID
+Supporting Context GeoIP, ASN, user privilege, device compliance, asset criticality, data sensitivity, threat-
+intel match, related change ticket
+Grouping Key Same user/host/source IP/session/application within 24 hours
+Business Impact Tag Data Leakage, Insider Risk and AI Security
+
+Grouping logic 
+
+• Group by same user and source IP when identity or cloud activity is involved.
+• Group by same host, process, file hash or destination when endpoint activity is involved.
+• Group by same mailbox, site, file repository or external recipient when email or data activity is involved.
+• Group by same API token, endpoint, session or customer object when application/API activity is involved.
+• Escalate to a higher-level incident when two or more categories appear in the same timeline.
+
+Triage Questions
+• Is the user, host, application or service account expected to perform this activity?
+• Is there an approved change, service request, incident ticket or business justification?
+• Did the same entity trigger other related alerts before or after this event?
+• Is the source IP, country, ASN, device, user-agent or session new for this entity?
+• Is the affected asset, mailbox, data repository or application business-critical?
+• Was the activity allowed, blocked, partially completed or only attempted?
+• Is there evidence of data access, privilege change, control tampering, lateral movement or persistence?
+• Should this be escalated to L2/L3, Incident Response, IAM, endpoint, cloud, network, application or risk/compliance
+team?
+• What data was accessed, exported, downloaded or uploaded?
+• Is customer, confidential, regulated or long-lived sensitive data involved?
+
+Recommended Response Actions
+• Validate the alert against the simulated or real evidence timeline and preserve raw events.
+• Enrich the entities with user role, asset owner, department, asset criticality, privilege level and recent activity.
+• Check for matching activity across SIEM, EDR, identity, cloud, proxy, email, application and network telemetry.
+• Escalate according to the incident classification and business impact, not only the technical event type.
+• Document the final decision, containment actions, evidence and closure rationale in the case record.
+• Identify exactly what data was accessed or transferred and whether regulatory, privacy, customer or management
+notification review is required.
+• Preserve DLP evidence, file access logs, destination details and user confirmation.
+
+False Positive Possibilities
+• Approved maintenance, migration, testing, vulnerability assessment or administrative activity.
+• Known automation account, service integration, backup process, security tool, scanner or deployment platform.
+• Business travel, remote work, vendor support activity or approved temporary access.
+• False reputation match, geolocation inaccuracy, NAT/proxy aggregation or log parsing issue.
+• Application behaviour change after release, patch, policy update or workflow redesign.
+
+# usecase 94 : Email with sensitive attachment sent to personal domain 
+
+category : Data Leakage, Insider Risk and AI Security
+mitre att&ck mapping : Data Leakage, Insider Risk and AI Security
+
+Hypothesis : A user sneds a spreasheet containing confidential information to a personal email address
+
+Required log sources : 
+    - email dlp 
+    - exchange message tactics 
+    - m365 audit 
+    - timegenerated/eventtime 
+    - user/account/service-prinicpal
+    - host/device/asset 
+    - sourceip/geo/asn/destip
+    - action/result/status 
+    - application/resource/object 
+
+Building Blocks Design 
+
+BB Personal Email Domains 
+BB Sensitive Attachment Pattern 
+BB Approved Exceptions
+
+Rule Creation logic 
+
+rule Enterprise_Sensitive_Email_To_Personal_Domain
+{
+  meta:
+    severity = "Critical"
+    attack_technique = "T1567"
+
+  events:
+
+    $email.metadata.event_type = "EMAIL_SENT"
+
+    $personal.security_result.summary = "PERSONAL_EMAIL_DOMAINS"
+
+    $attachment.security_result.summary = "SENSITIVE_ATTACHMENT_PATTERN"
+
+    $approved.security_result.summary = "APPROVED_EXCEPTIONS"
+
+    $user = $email.principal.user.userid
+
+    $host = $email.principal.hostname
+
+  match:
+
+    $user over 60m
+
+  outcome:
+
+    $risk_score =
+        50 +
+        if(#personal > 0,20,0) +
+        if(#attachment > 0,20,0) +
+        if(#approved == 0,10,0)
+
+  condition:
+
+      #email > 0
+
+      and
+
+      #personal > 0
+
+      and
+
+      #attachment > 0
+
+      and
+
+      #approved == 0
+
+      and
+
+      not $user in
+          %approved_external_email_users
+
+      and
+
+      not $email.target.user.email_addresses in
+          %approved_external_domains
+}
+
+Alert Design 
+
+Field Example Value
+Alert Name 2026 - Email with Sensitive Attachment Sent to Personal Domain
+Incident Name Possible Email with Sensitive Attachment Sent to Personal Domain Investigation
+Primary Entity User, Host, Source IP, Application, Session ID
+Supporting Context GeoIP, ASN, user privilege, device compliance, asset criticality, data sensitivity, threat-
+intel match, related change ticket
+Grouping Key Same user/host/source IP/session/application within 24 hours
+Business Impact Tag Data Leakage, Insider Risk and AI Security
+
+Grouping logic 
+
+• Group by same user and source IP when identity or cloud activity is involved.
+• Group by same host, process, file hash or destination when endpoint activity is involved.
+• Group by same mailbox, site, file repository or external recipient when email or data activity is involved.
+• Group by same API token, endpoint, session or customer object when application/API activity is involved.
+• Escalate to a higher-level incident when two or more categories appear in the same timeline.
+
+Triage Questions
+• Is the user, host, application or service account expected to perform this activity?
+• Is there an approved change, service request, incident ticket or business justification?
+• Did the same entity trigger other related alerts before or after this event?
+• Is the source IP, country, ASN, device, user-agent or session new for this entity?
+• Is the affected asset, mailbox, data repository or application business-critical?
+• Was the activity allowed, blocked, partially completed or only attempted?
+• Is there evidence of data access, privilege change, control tampering, lateral movement or persistence?
+• Should this be escalated to L2/L3, Incident Response, IAM, endpoint, cloud, network, application or risk/compliance
+team?
+• What data was accessed, exported, downloaded or uploaded?
+• Is customer, confidential, regulated or long-lived sensitive data involved?
+
+Recommended Response Actions
+• Validate the alert against the simulated or real evidence timeline and preserve raw events.
+• Enrich the entities with user role, asset owner, department, asset criticality, privilege level and recent activity.
+• Check for matching activity across SIEM, EDR, identity, cloud, proxy, email, application and network telemetry.
+• Escalate according to the incident classification and business impact, not only the technical event type.
+• Document the final decision, containment actions, evidence and closure rationale in the case record.
+• Identify exactly what data was accessed or transferred and whether regulatory, privacy, customer or management
+notification review is required.
+• Preserve DLP evidence, file access logs, destination details and user confirmation.
+
+False Positive Possibilities
+• Approved maintenance, migration, testing, vulnerability assessment or administrative activity.
+• Known automation account, service integration, backup process, security tool, scanner or deployment platform.
+• Business travel, remote work, vendor support activity or approved temporary access.
+• False reputation match, geolocation inaccuracy, NAT/proxy aggregation or log parsing issue.
+• Application behaviour change after release, patch, policy update or workflow redesign.
+
+# usecase 95 : Repeated Access Denied to Restricted Folders 
+
+Category : Data Leakage, Insider Risk and AI Security
+Mitre att&ck mapping : T1083 File and Directory Discovery; T1039 Data from Network Shared Drive
+
+Hypothesis : A user repeatedly attempts to open folders outside their job role 
+
+Required log sources : 
+    - file server audit 
+    - ad logs 
+    - ueba 
+    - timegenerated/eventtime 
+    - user/account/service-principal
+    - host/device/asset 
+    - sourceip/geo/asn/destip 
+    - action/result/status 
+    - application/resource/object 
+
+Building Blocks Design 
+
+BB Restricted Folder Paths 
+BB Access Denied 
+BB Department Role Mapping 
+
+Rule Creation logic 
+
+rule Enterprise_Repeated_Access_Denied_Restricted_Folders
+{
+  meta:
+    severity = "Critical"
+    attack_technique = "T1083"
+
+  events:
+
+    $access.metadata.event_type = "FILE_ACCESS"
+
+    $folder.security_result.summary = "RESTRICTED_FOLDER_PATHS"
+
+    $threshold.security_result.summary = "ACCESS_DENIED_THRESHOLD"
+
+    $role.security_result.summary = "DEPARTMENT_ROLE_MAPPING"
+
+    $user = $access.principal.user.userid
+
+    $host = $access.principal.hostname
+
+  match:
+
+    $user, $host over 60m
+
+  outcome:
+
+    $risk_score =
+        50 +
+        if(#folder > 0,20,0) +
+        if(#threshold > 0,15,0) +
+        if(#role > 0,15,0)
+
+  condition:
+
+      #access > 0
+
+      and
+
+      #folder > 0
+
+      and
+
+      #threshold > 0
+
+      and
+
+      #role > 0
+
+      and
+
+      not $user in
+          %approved_admin_accounts
+
+      and
+
+      not $host in
+          %approved_scanner_hosts
+}
+
+Alert Design 
+
+Field Example Value
+Alert Name 2026 - Repeated Access Denied to Restricted Folders
+Incident Name Possible Repeated Access Denied to Restricted Folders Investigation
+Primary Entity User, Host, Source IP, Application, Session ID
+Supporting Context GeoIP, ASN, user privilege, device compliance, asset criticality, data sensitivity, threat-
+intel match, related change ticket
+Grouping Key Same user/host/source IP/session/application within 24 hours
+Business Impact Tag Data Leakage, Insider Risk and AI Security
+
+Grouping logic 
+
+• Group by same user and source IP when identity or cloud activity is involved.
+• Group by same host, process, file hash or destination when endpoint activity is involved.
+• Group by same mailbox, site, file repository or external recipient when email or data activity is involved.
+• Group by same API token, endpoint, session or customer object when application/API activity is involved.
+• Escalate to a higher-level incident when two or more categories appear in the same timeline.
+
+Triage Questions
+• Is the user, host, application or service account expected to perform this activity?
+• Is there an approved change, service request, incident ticket or business justification?
+• Did the same entity trigger other related alerts before or after this event?
+• Is the source IP, country, ASN, device, user-agent or session new for this entity?
+• Is the affected asset, mailbox, data repository or application business-critical?
+• Was the activity allowed, blocked, partially completed or only attempted?
+• Is there evidence of data access, privilege change, control tampering, lateral movement or persistence?
+• Should this be escalated to L2/L3, Incident Response, IAM, endpoint, cloud, network, application or risk/compliance
+team?
+• What data was accessed, exported, downloaded or uploaded?
+• Is customer, confidential, regulated or long-lived sensitive data involved?
+
+Recommended Response Actions
+• Validate the alert against the simulated or real evidence timeline and preserve raw events.
+• Enrich the entities with user role, asset owner, department, asset criticality, privilege level and recent activity.
+• Check for matching activity across SIEM, EDR, identity, cloud, proxy, email, application and network telemetry.
+• Escalate according to the incident classification and business impact, not only the technical event type.
+• Document the final decision, containment actions, evidence and closure rationale in the case record.
+• Identify exactly what data was accessed or transferred and whether regulatory, privacy, customer or management
+notification review is required.
+• Preserve DLP evidence, file access logs, destination details and user confirmation.
+
+False Positive Possibilities
+• Approved maintenance, migration, testing, vulnerability assessment or administrative activity.
+• Known automation account, service integration, backup process, security tool, scanner or deployment platform.
+• Business travel, remote work, vendor support activity or approved temporary access.
+• False reputation match, geolocation inaccuracy, NAT/proxy aggregation or log parsing issue.
+• Application behaviour change after release, patch, policy update or workflow redesign.
+
+# usecase 96 : Abnormal Sensitive Printing Volume 
+
+Category : Data Leakage, Insider Risk and AI Security
+Mitre att&ck mapping : T1052 Exfiltration Over Physical Medium
+
+Hypothesis : A user prints hundreds of pages of sensititve documents outside normal usage 
+
+Required log sources :
+    - print server logs 
+    - dlp 
+    - hr context 
+    - timegenerated/eventtime 
+    - user/account/service-prinicpal
+    - host/device/asset 
+    - sourceip/geo/asn/destip 
+    - action/result/status 
+    - application/resource/object 
+
+Building Blocks Design 
+
+BB Sensitive Print Jobs 
+BB Print Volume Baseline 
+BB Restricted Printers 
+
+Rule Creation logic 
+
+rule Enterprise_Abnormal_Sensitive_Printing
+{
+  meta:
+    severity = "Critical"
+    attack_technique = "T1020"
+
+  events:
+
+    $print.metadata.event_type = "PRINT_JOB"
+
+    $sensitive.security_result.summary = "SENSITIVE_PRINT_JOBS"
+
+    $baseline.security_result.summary = "PRINT_VOLUME_BASELINE"
+
+    $restricted.security_result.summary = "RESTRICTED_PRINTERS"
+
+    $user = $print.principal.user.userid
+
+    $host = $print.principal.hostname
+
+  match:
+
+    $user over 60m
+
+  outcome:
+
+    $risk_score =
+      50 +
+      if(#sensitive > 0,20,0) +
+      if(#baseline > 0,15,0) +
+      if(#restricted > 0,15,0)
+
+  condition:
+
+      #print > 0
+
+      and
+
+      #sensitive > 0
+
+      and
+
+      #baseline > 0
+
+      and
+
+      #restricted > 0
+
+      and
+
+      not $user in %approved_bulk_print_users
+
+      and
+
+      not $host in %approved_print_servers
+
+      and
+
+      not $print.target.resource.name in %approved_printers
+}
+
+Alert Design 
+
+Field Example Value
+Alert Name 2026 - Abnormal Sensitive Printing Volume
+Incident Name Possible Abnormal Sensitive Printing Volume Investigation
+Primary Entity User, Host, Source IP, Application, Session ID
+Supporting Context GeoIP, ASN, user privilege, device compliance, asset criticality, data sensitivity, threat-
+intel match, related change ticket
+Grouping Key Same user/host/source IP/session/application within 24 hours
+Business Impact Tag Data Leakage, Insider Risk and AI Security
+
+Grouping logic 
+
+• Group by same user and source IP when identity or cloud activity is involved.
+• Group by same host, process, file hash or destination when endpoint activity is involved.
+• Group by same mailbox, site, file repository or external recipient when email or data activity is involved.
+• Group by same API token, endpoint, session or customer object when application/API activity is involved.
+• Escalate to a higher-level incident when two or more categories appear in the same timeline
+
+Triage Questions
+• Is the user, host, application or service account expected to perform this activity?
+• Is there an approved change, service request, incident ticket or business justification?
+• Did the same entity trigger other related alerts before or after this event?
+• Is the source IP, country, ASN, device, user-agent or session new for this entity?
+• Is the affected asset, mailbox, data repository or application business-critical?
+• Was the activity allowed, blocked, partially completed or only attempted?
+• Is there evidence of data access, privilege change, control tampering, lateral movement or persistence?
+• Should this be escalated to L2/L3, Incident Response, IAM, endpoint, cloud, network, application or risk/compliance
+team?
+• What data was accessed, exported, downloaded or uploaded?
+• Is customer, confidential, regulated or long-lived sensitive data involved?
+
+Recommended Response Actions
+• Validate the alert against the simulated or real evidence timeline and preserve raw events.
+• Enrich the entities with user role, asset owner, department, asset criticality, privilege level and recent activity.
+• Check for matching activity across SIEM, EDR, identity, cloud, proxy, email, application and network telemetry.
+• Escalate according to the incident classification and business impact, not only the technical event type.
+• Document the final decision, containment actions, evidence and closure rationale in the case record.
+• Identify exactly what data was accessed or transferred and whether regulatory, privacy, customer or management
+notification review is required.
+• Preserve DLP evidence, file access logs, destination details and user confirmation.
+
+False Positive Possibilities
+• Approved maintenance, migration, testing, vulnerability assessment or administrative activity.
+• Known automation account, service integration, backup process, security tool, scanner or deployment platform.
+• Business travel, remote work, vendor support activity or approved temporary access.
+• False reputation match, geolocation inaccuracy, NAT/proxy aggregation or log parsing issue.
+• Application behaviour change after release, patch, policy update or workflow redesign.
+
+# usecase 97 : Critical log source stops sending logs to siem 
+
+Category : Governance, Control Monitoring and Crypto Readiness
+Mitre att&ck mapping : T1562 Impair Defenses
+
+Hypothesis : A firewall, edr, identity or core application log sources goes silent, reducing SOC visibility.
+
+Required log sources : 
+    - siem health 
+    - log colletor logs 
+    - asset inventory 
+    - user/account/service-principal
+    - host/device/asset 
+    - sourceip/geo/asn/destip 
+    - action/result/status 
+    - application/resource/object 
+
+Building Blocks Design 
+
+BB Critical Log sources 
+BB No log threshold 
+BB Maintenance window
+
+Rule Creation logic 
+
+rule Enterprise_Critical_Log_Source_Offline
+{
+  meta:
+    severity = "Critical"
+    attack_technique = "T1562.008"
+
+  events:
+
+    $health.metadata.event_type = "SIEM_HEALTH"
+
+    $critical.security_result.summary = "CRITICAL_LOG_SOURCES"
+
+    $threshold.security_result.summary = "NO_LOG_THRESHOLD"
+
+    $maintenance.security_result.summary = "MAINTENANCE_WINDOW"
+
+    $asset = $health.principal.asset.asset_id
+
+    $hostname = $health.principal.hostname
+
+  match:
+
+    $asset over 60m
+
+  outcome:
+
+    $risk_score =
+        50 +
+        if(#critical > 0,20,0) +
+        if(#threshold > 0,20,0) +
+        if(#maintenance == 0,10,0)
+
+  condition:
+
+      #health > 0
+
+      and
+
+      #critical > 0
+
+      and
+
+      #threshold > 0
+
+      and
+
+      #maintenance == 0
+
+      and
+
+      not $asset in %approved_maintenance_assets
+
+      and
+
+      not $hostname in %approved_log_collectors
+}
+
+Alert Design 
+
+Field Example Value
+Alert Name 2026 - Critical Log Source Stops Sending Logs to SIEM
+Incident Name Possible Critical Log Source Stops Sending Logs to SIEM Investigation
+Primary Entity User, Host, Source IP, Application, Session ID
+Supporting Context GeoIP, ASN, user privilege, device compliance, asset criticality, data sensitivity, threat-
+intel match, related change ticket
+Grouping Key Same user/host/source IP/session/application within 24 hours
+Business Impact Tag Governance, Control Monitoring and Crypto Readiness
+
+Grouping logic 
+
+• Group by same user and source IP when identity or cloud activity is involved.
+• Group by same host, process, file hash or destination when endpoint activity is involved.
+• Group by same mailbox, site, file repository or external recipient when email or data activity is involved.
+• Group by same API token, endpoint, session or customer object when application/API activity is involved.
+• Escalate to a higher-level incident when two or more categories appear in the same timeline.
+
+Triage Questions
+• Is the user, host, application or service account expected to perform this activity?
+• Is there an approved change, service request, incident ticket or business justification?
+• Did the same entity trigger other related alerts before or after this event?
+• Is the source IP, country, ASN, device, user-agent or session new for this entity?
+• Is the affected asset, mailbox, data repository or application business-critical?
+• Was the activity allowed, blocked, partially completed or only attempted?
+• Is there evidence of data access, privilege change, control tampering, lateral movement or persistence?
+• Should this be escalated to L2/L3, Incident Response, IAM, endpoint, cloud, network, application or risk/compliance
+team?
+
+Recommended Response Actions
+• Validate the alert against the simulated or real evidence timeline and preserve raw events.
+• Enrich the entities with user role, asset owner, department, asset criticality, privilege level and recent activity.
+• Check for matching activity across SIEM, EDR, identity, cloud, proxy, email, application and network telemetry.
+• Escalate according to the incident classification and business impact, not only the technical event type.
+• Document the final decision, containment actions, evidence and closure rationale in the case record.
+
+False Positive Possibilities
+• Approved maintenance, migration, testing, vulnerability assessment or administrative activity.
+• Known automation account, service integration, backup process, security tool, scanner or deployment platform.
+• Business travel, remote work, vendor support activity or approved temporary access.
+• False reputation match, geolocation inaccuracy, NAT/proxy aggregation or log parsing issue.
+• Application behaviour change after release, patch, policy update or workflow redesign.
+
+# usecase 98 : SIEM Detection rule disabled or modified 
+
+Category : Governance, Control Monitoring and Crypto Readiness
+mitre att&ck mapping : T1562 Impair Defenses
+
+Hypothesis : A high-value detection rule is disabled or its threshold is weakened
+
+Required log sources : 
+    - siem audit logs 
+    - change management 
+    - soc admin logs 
+    - timegenerated/eventtime 
+    - user/account/service-prinicpal
+    - host/device/asset 
+    - sourceip/geo/asn/destip 
+    - action/result/status
+    - application/resource/object 
+
+Building Blocks Design 
+
+BB Critical Detection rules
+BB Approved rule Change 
+BB SOC Admin Accounts 
+
+Rule Creation logic 
+
+rule Enterprise_SIEM_Detection_Rule_Disabled
+{
+  meta:
+    severity = "Critical"
+    attack_technique = "T1562.001"
+
+  events:
+
+    $rule.metadata.event_type = "SIEM_AUDIT"
+
+    $critical.security_result.summary = "CRITICAL_DETECTION_RULES"
+
+    $approved.security_result.summary = "APPROVED_RULE_CHANGE"
+
+    $admin.security_result.summary = "SOC_ADMIN_ACCOUNTS"
+
+    $user = $rule.principal.user.userid
+
+    $host = $rule.principal.hostname
+
+  match:
+
+    $user over 60m
+
+  outcome:
+
+    $risk_score =
+      50 +
+      if(#critical > 0,20,0) +
+      if(#approved == 0,20,0) +
+      if(#admin > 0,10,0)
+
+  condition:
+
+      #rule > 0
+
+      and
+
+      #critical > 0
+
+      and
+
+      #approved == 0
+
+      and
+
+      #admin > 0
+
+      and
+
+      not $user in %approved_soc_admins
+
+      and
+
+      not $host in %approved_siem_management_hosts
+}
+
+Alert Design 
+
+Field Example Value
+Alert Name 2026 - SIEM Detection Rule Disabled or Modified
+Incident Name Possible SIEM Detection Rule Disabled or Modified Investigation
+Primary Entity User, Host, Source IP, Application, Session ID
+Supporting Context GeoIP, ASN, user privilege, device compliance, asset criticality, data sensitivity, threat-
+intel match, related change ticket
+Grouping Key Same user/host/source IP/session/application within 24 hours
+Business Impact Tag Governance, Control Monitoring and Crypto Readiness
+
+Grouping logic 
+
+• Group by same user and source IP when identity or cloud activity is involved.
+• Group by same host, process, file hash or destination when endpoint activity is involved.
+• Group by same mailbox, site, file repository or external recipient when email or data activity is involved.
+• Group by same API token, endpoint, session or customer object when application/API activity is involved.
+• Escalate to a higher-level incident when two or more categories appear in the same timeline.
+
+Triage Questions
+• Is the user, host, application or service account expected to perform this activity?
+• Is there an approved change, service request, incident ticket or business justification?
+• Did the same entity trigger other related alerts before or after this event?
+• Is the source IP, country, ASN, device, user-agent or session new for this entity?
+• Is the affected asset, mailbox, data repository or application business-critical?
+• Was the activity allowed, blocked, partially completed or only attempted?
+• Is there evidence of data access, privilege change, control tampering, lateral movement or persistence?
+• Should this be escalated to L2/L3, Incident Response, IAM, endpoint, cloud, network, application or risk/compliance
+team?
+
+Recommended Response Actions
+• Validate the alert against the simulated or real evidence timeline and preserve raw events.
+• Enrich the entities with user role, asset owner, department, asset criticality, privilege level and recent activity.
+• Check for matching activity across SIEM, EDR, identity, cloud, proxy, email, application and network telemetry.
+• Escalate according to the incident classification and business impact, not only the technical event type.
+• Document the final decision, containment actions, evidence and closure rationale in the case record.
+
+False Positive Possibilities
+• Approved maintenance, migration, testing, vulnerability assessment or administrative activity.
+• Known automation account, service integration, backup process, security tool, scanner or deployment platform.
+• Business travel, remote work, vendor support activity or approved temporary access.
+• False reputation match, geolocation inaccuracy, NAT/proxy aggregation or log parsing issue.
+• Application behaviour change after release, patch, policy update or workflow redesign.
+
+# usecase 99 : Private Key or Certificate Exported unexpectedly 
+
+Category : Governance, Control Monitoring and Crypto Readiness
+Mitre att&ck mapping : T1552 Unsecured Credentials
+
+Hypothesis : A private certificate key is exported from a sensitive system outside an approved PKI operation 
+
+Required log sources : 
+    - certificate management logs 
+    - windows security logs 
+    - edr file Events
+    - timegenerated/eventtime 
+    - user/account/service-prinicpal
+    - host/device/asset 
+    - sourceip/geo/destip/asn
+    - action/result/status 
+    - application/resource/object 
+
+Building Blocks Design 
+
+BB Private Key Paths 
+BB Certificate Export Events 
+BB Approved PKI Admins 
+
+Rule Creation logic 
+
+rule Enterprise_Private_Key_Certificate_Export
+{
+  meta:
+    severity = "Critical"
+    attack_technique = "T1649"
+
+  events:
+
+    $export.metadata.event_type = "CERTIFICATE_EXPORT"
+
+    $key.security_result.summary = "PRIVATE_KEY_PATHS"
+
+    $cert.security_result.summary = "CERTIFICATE_EXPORT_EVENTS"
+
+    $admin.security_result.summary = "APPROVED_PKI_ADMINS"
+
+    $user = $export.principal.user.userid
+
+    $host = $export.principal.hostname
+
+  match:
+
+    $user over 60m
+
+  outcome:
+
+    $risk_score =
+        50 +
+        if(#key > 0,20,0) +
+        if(#cert > 0,20,0) +
+        if(#admin == 0,10,0)
+
+  condition:
+
+      #export > 0
+
+      and
+
+      #key > 0
+
+      and
+
+      #cert > 0
+
+      and
+
+      #admin == 0
+
+      and
+
+      not $user in %approved_pki_admins
+
+      and
+
+      not $host in %approved_certificate_servers
+}
+
+
+Alert Design 
+
+Field Example Value
+Alert Name 2026 - Private Key or Certificate Exported Unexpectedly
+Incident Name Possible Private Key or Certificate Exported Unexpectedly Investigation
+Primary Entity User, Host, Source IP, Application, Session ID
+Supporting Context GeoIP, ASN, user privilege, device compliance, asset criticality, data sensitivity, threat-
+intel match, related change ticket
+Grouping Key Same user/host/source IP/session/application within 24 hours
+Business Impact Tag Governance, Control Monitoring and Crypto Readiness
+
+Grouping logic 
+
+• Group by same user and source IP when identity or cloud activity is involved.
+• Group by same host, process, file hash or destination when endpoint activity is involved.
+• Group by same mailbox, site, file repository or external recipient when email or data activity is involved.
+• Group by same API token, endpoint, session or customer object when application/API activity is involved.
+• Escalate to a higher-level incident when two or more categories appear in the same timeline.
+
+Triage Questions
+• Is the user, host, application or service account expected to perform this activity?
+• Is there an approved change, service request, incident ticket or business justification?
+• Did the same entity trigger other related alerts before or after this event?
+• Is the source IP, country, ASN, device, user-agent or session new for this entity?
+• Is the affected asset, mailbox, data repository or application business-critical?
+• Was the activity allowed, blocked, partially completed or only attempted?
+• Is there evidence of data access, privilege change, control tampering, lateral movement or persistence?
+• Should this be escalated to L2/L3, Incident Response, IAM, endpoint, cloud, network, application or risk/compliance
+team?
+
+Recommended Response Actions
+• Validate the alert against the simulated or real evidence timeline and preserve raw events.
+• Enrich the entities with user role, asset owner, department, asset criticality, privilege level and recent activity.
+• Check for matching activity across SIEM, EDR, identity, cloud, proxy, email, application and network telemetry.
+• Escalate according to the incident classification and business impact, not only the technical event type.
+• Document the final decision, containment actions, evidence and closure rationale in the case record.
+
+False Positive Possibilities
+• Approved maintenance, migration, testing, vulnerability assessment or administrative activity.
+• Known automation account, service integration, backup process, security tool, scanner or deployment platform.
+• Business travel, remote work, vendor support activity or approved temporary access.
+• False reputation match, geolocation inaccuracy, NAT/proxy aggregation or log parsing issue.
+• Application behaviour change after release, patch, policy update or workflow redesign.
+
+# usecase 100 : Quantam-vulnerable Cryptography on Sensitive Long-live data 
+
+Category : Governance, Control Monitoring and Crypto Readiness
+Mitre att&ck mapping: T1552 Unsecured Credentials; Governance Control
+
+Hypothesis : A system storing long-retention sensitive data relies on legacy Cryptography and has nocrypto-agility roadmap 
+
+Required log sources : 
+    - crypto inventory 
+    - data classification 
+    - asset inventory 
+    - tls scan 
+    - timegenerated/eventtime 
+    - user/account/service-prinicpal
+    - host/asset/device 
+    - sourceip/geo/asn/destip
+    - action/result/status 
+    - application/resource/object 
+
+Building Blocks Design 
+
+BB Sensitive Long-live data 
+BB RSA/ECC inventory
+BB Critical Applications 
+
+Rule Creation logic 
+
+rule Enterprise_Quantum_Vulnerable_Cryptography
+{
+  meta:
+    severity = "Critical"
+
+  events:
+
+    $crypto.metadata.event_type = "CRYPTOGRAPHY_INVENTORY"
+
+    $data.security_result.summary = "SENSITIVE_LONG_LIVED_DATA"
+
+    $algorithm.security_result.summary = "RSA_ECC_INVENTORY"
+
+    $critical.security_result.summary = "CRITICAL_APPLICATIONS"
+
+    $asset = $crypto.principal.asset.asset_id
+
+    $host = $crypto.principal.hostname
+
+  match:
+
+    $asset over 60m
+
+  outcome:
+
+    $risk_score =
+        50 +
+        if(#data > 0,20,0) +
+        if(#algorithm > 0,20,0) +
+        if(#critical > 0,10,0)
+
+  condition:
+
+      #crypto > 0
+
+      and
+
+      #data > 0
+
+      and
+
+      #algorithm > 0
+
+      and
+
+      #critical > 0
+
+      and
+
+      not $asset in %approved_legacy_crypto_assets
+
+      and
+
+      not $host in %approved_crypto_exception_hosts
+}
+
+Alert Design
+Field Example Value
+Alert Name 2026 - Quantum-Vulnerable Cryptography on Sensitive Long-Lived Data
+Incident Name Possible Quantum-Vulnerable Cryptography on Sensitive Long-Lived Data Investigation
+Primary Entity User, Host, Source IP, Application, Session ID
+Supporting Context GeoIP, ASN, user privilege, device compliance, asset criticality, data sensitivity, threat-
+intel match, related change ticket
+Grouping Key Same user/host/source IP/session/application within 24 hours
+Business Impact Tag Governance, Control Monitoring and Crypto Readiness
+
+Grouping : 
+
+• Group by same user and source IP when identity or cloud activity is involved.
+• Group by same host, process, file hash or destination when endpoint activity is involved.
+• Group by same mailbox, site, file repository or external recipient when email or data activity is involved.
+• Group by same API token, endpoint, session or customer object when application/API activity is involved.
+• Escalate to a higher-level incident when two or more categories appear in the same timeline.
+
+Triage Questions
+• Is the user, host, application or service account expected to perform this activity?
+• Is there an approved change, service request, incident ticket or business justification?
+• Did the same entity trigger other related alerts before or after this event?
+• Is the source IP, country, ASN, device, user-agent or session new for this entity?
+• Is the affected asset, mailbox, data repository or application business-critical?
+• Was the activity allowed, blocked, partially completed or only attempted?
+• Is there evidence of data access, privilege change, control tampering, lateral movement or persistence?
+• Should this be escalated to L2/L3, Incident Response, IAM, endpoint, cloud, network, application or risk/compliance
+team?
+CONFIDENTIAL
+
+Recommended Response Actions
+• Validate the alert against the simulated or real evidence timeline and preserve raw events.
+• Enrich the entities with user role, asset owner, department, asset criticality, privilege level and recent activity.
+• Check for matching activity across SIEM, EDR, identity, cloud, proxy, email, application and network telemetry.
+• Escalate according to the incident classification and business impact, not only the technical event type.
+• Document the final decision, containment actions, evidence and closure rationale in the case record.
+
+False Positive Possibilities
+• Approved maintenance, migration, testing, vulnerability assessment or administrative activity.
+• Known automation account, service integration, backup process, security tool, scanner or deployment platform.
+• Business travel, remote work, vendor support activity or approved temporary access.
+• False reputation match, geolocation inaccuracy, NAT/proxy aggregation or log parsing issue.
+• Application behaviour change after release, patch, policy update or workflow redesign.
